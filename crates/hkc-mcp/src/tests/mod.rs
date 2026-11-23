@@ -456,7 +456,7 @@ async fn trips_month_day_and_detail() {
             json!({ "setTripStartTime": "20261117080003" }),
         ))
         .respond_with(ok(fixture("trip_detail")))
-        .expect(1)
+        .expect(2)
         .mount(&backend)
         .await;
     let mcp = connect(car_server(&backend, &Policy::default(), None)).await;
@@ -483,8 +483,31 @@ async fn trips_month_day_and_detail() {
         .await,
     );
     assert!(summary.contains("trip 2"), "{summary}");
-    assert!(data["route"].as_array().unwrap().len() > 2);
+    assert!(summary.contains("left out"), "{summary}");
+    // By default the route is left out, but its size and how to get it are not.
+    assert!(data.get("route").is_none(), "{data}");
+    assert_eq!(data["route_points_total"], 4);
+    assert!(
+        data["hint"]
+            .as_str()
+            .unwrap()
+            .contains("include_route=true")
+    );
+    assert_eq!(data["harsh_braking_events"], 0);
+    assert_eq!(data["totals"]["max_speed_kmh"], 91.0);
     assert!(data["start"].as_str().unwrap().ends_with("IST"));
+
+    let (summary, data) = parts(
+        &call(
+            &mcp,
+            "get_trips",
+            json!({ "date": "2026-11-17", "trip": 2, "include_route": true }),
+        )
+        .await,
+    );
+    assert!(summary.contains("4 route points"), "{summary}");
+    assert_eq!(data["route"].as_array().unwrap().len(), 4);
+    assert!(data.get("hint").is_none(), "{data}");
 
     for (args, message) in [
         (json!({ "trip": 1 }), "needs a date"),
@@ -495,12 +518,204 @@ async fn trips_month_day_and_detail() {
         (json!({ "month": "November" }), "YYYY-MM"),
         (json!({ "date": "17/11/2026" }), "YYYY-MM-DD"),
         (json!({ "date": "2026-11-17", "trip": 9 }), "1 to 2"),
+        (
+            json!({ "date": "2026-11-17", "include_route": true }),
+            "include_route needs",
+        ),
+        (json!({ "with_events": true }), "with_events needs a date"),
     ] {
         let result = call(&mcp, "get_trips", args.clone()).await;
         assert!(is_error(&result), "{args}");
         let (text, _) = parts(&result);
         assert!(text.contains(message), "{args}: {text}");
     }
+}
+
+/// The `trip_detail` fixture with `points` route points and the given
+/// event counts.
+fn trip_detail_body(points: u32, braking: u32, accel: u32, speeding: u32) -> Value {
+    let mut body = fixture("trip_detail");
+    let info = &mut body["resMsg"]["tripInfo"];
+    info["tripHardBreakingTime"] = braking.into();
+    info["tripRapidAccelationTime"] = accel.into();
+    info["tripExcessiveSpeedTime"] = speeding.into();
+    info["tripList"] = (0..points)
+        .map(|i| {
+            let (m, sec) = (i / 60 % 30, i % 60);
+            json!({
+                "tripTime": format!("08{m:02}{sec:02}"),
+                "lat": 12.9716 + f64::from(i) * 0.00013,
+                "lon": 77.5946 + f64::from(i) * 0.00011,
+                "tripDate": { "utc": format!("2026111702{:02}{sec:02}", m + 30), "offset": 5.5 }
+            })
+        })
+        .collect();
+    body
+}
+
+/// A day listing with `n` trips, one a minute from 06:00 IST.
+fn trip_day_body(n: usize) -> Value {
+    let mut body = fixture("trip_day");
+    let day = &mut body["resMsg"]["dayTripList"][0];
+    day["dayTripCnt"] = n.into();
+    day["tripList"] = (0..n)
+        .map(|i| {
+            let start = format!("2026111706{i:02}00");
+            json!({
+                "tripStartTime": start,
+                "tripStartCoord": {
+                    "tripStartTime": start,
+                    "tripStartDate": { "utc": format!("2026111700{:02}00", 30 + i), "offset": 5.5 },
+                    "lat": 12.9716, "lon": 77.5946
+                },
+                "tripEndTime": format!("2026111706{i:02}50"),
+                "tripEndCoord": {
+                    "tripEndTime": format!("2026111706{i:02}50"),
+                    "tripEndDate": { "utc": format!("2026111700{:02}50", 30 + i), "offset": 5.5 },
+                    "lat": 12.9723, "lon": 77.5955
+                },
+                "serviceTID": start.parse::<u64>().unwrap()
+            })
+        })
+        .collect();
+    body
+}
+
+async fn mount_day(server: &MockServer, body: Value) {
+    Mock::given(method("POST"))
+        .and(path(vehicle_path("/tripinfo")))
+        .and(body_partial_json(
+            json!({ "tripPeriodType": 1, "setTripDay": "20261117" }),
+        ))
+        .respond_with(ok(body))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn long_routes_are_thinned_and_only_sent_on_request() {
+    let backend = backend().await;
+    mount_vehicles(&backend, fixture("vehicles")).await;
+    mount_day(&backend, fixture("trip_day")).await;
+    Mock::given(method("POST"))
+        .and(path(vehicle_path("/tripinfo/detail")))
+        .respond_with(ok(trip_detail_body(900, 1, 2, 3)))
+        .expect(2)
+        .mount(&backend)
+        .await;
+    let mcp = connect(car_server(&backend, &Policy::default(), None)).await;
+
+    let get = |route: bool| {
+        call(
+            &mcp,
+            "get_trips",
+            json!({ "date": "2026-11-17", "trip": 1, "include_route": route }),
+        )
+    };
+    let (_, lean) = parts(&get(false).await);
+    let (_, full) = parts(&get(true).await);
+    assert!(lean.get("route").is_none());
+    assert_eq!(lean["route_points_total"], 900);
+    assert_eq!(lean["harsh_braking_events"], 1);
+    assert_eq!(lean["rapid_acceleration_events"], 2);
+    assert_eq!(lean["speeding_events"], 3);
+    let route = full["route"].as_array().unwrap();
+    assert_eq!(route.len(), crate::format::MAX_ROUTE_POINTS);
+    assert_eq!(full["route_points_total"], 900);
+    assert_eq!(full["route_points_shown"], 400);
+
+    // What the caller's context pays for one trip, as the tool sends it.
+    let (lean_len, full_len) = (lean.to_string().len(), full.to_string().len());
+    eprintln!("trip detail JSON: {lean_len} bytes without route, {full_len} with route");
+    assert!(lean_len < 1_000, "{lean_len}");
+    assert!(full_len > 10 * lean_len, "{full_len}");
+}
+
+#[tokio::test]
+async fn day_listing_with_events_fetches_each_trip_once() {
+    let backend = backend().await;
+    mount_vehicles(&backend, fixture("vehicles")).await;
+    mount_day(&backend, fixture("trip_day")).await;
+    for (start, (braking, accel, speeding)) in
+        [("20261117054442", (2, 0, 1)), ("20261117080003", (1, 3, 0))]
+    {
+        Mock::given(method("POST"))
+            .and(path(vehicle_path("/tripinfo/detail")))
+            .and(body_partial_json(json!({ "setTripStartTime": start })))
+            .respond_with(ok(trip_detail_body(300, braking, accel, speeding)))
+            .expect(1)
+            .mount(&backend)
+            .await;
+    }
+    let mcp = connect(car_server(&backend, &Policy::default(), None)).await;
+
+    // The plain listing stays a single cheap call (the detail mocks expect
+    // exactly one request each, from the with_events call below).
+    let (_, plain) = parts(&call(&mcp, "get_trips", json!({ "date": "2026-11-17" })).await);
+    assert!(plain["trips"][0].get("harsh_braking_events").is_none());
+    assert!(plain.get("events_totals").is_none());
+    assert!(plain["hint"].as_str().unwrap().contains("with_events"));
+
+    let (summary, data) = parts(
+        &call(
+            &mcp,
+            "get_trips",
+            json!({ "date": "2026-11-17", "with_events": true }),
+        )
+        .await,
+    );
+    assert!(
+        summary.contains("events for all: 3 harsh braking, 3 rapid acceleration, 1 speeding"),
+        "{summary}"
+    );
+    let trips = data["trips"].as_array().unwrap();
+    assert_eq!(trips.len(), 2);
+    // Trip 1 is the 05:44 one.
+    assert_eq!(trips[0]["start"], "05:44");
+    assert_eq!(trips[0]["harsh_braking_events"], 2);
+    assert_eq!(trips[0]["speeding_events"], 1);
+    assert_eq!(trips[1]["rapid_acceleration_events"], 3);
+    assert_eq!(trips[1]["max_speed_kmh"], 91.0);
+    assert_eq!(trips[1]["distance_km"], 13.0);
+    assert_eq!(data["events_totals"]["trips_counted"], 2);
+    assert_eq!(data["events_totals"]["harsh_braking_events"], 3);
+    assert_eq!(data["events_totals"]["max_speed_kmh"], 91.0);
+    assert!(data.get("events_truncated").is_none());
+    let text = data.to_string();
+    assert!(!text.contains("\"route\""), "no routes in a day listing");
+}
+
+#[tokio::test]
+async fn day_listing_with_events_is_capped() {
+    let backend = backend().await;
+    mount_vehicles(&backend, fixture("vehicles")).await;
+    mount_day(&backend, trip_day_body(25)).await;
+    Mock::given(method("POST"))
+        .and(path(vehicle_path("/tripinfo/detail")))
+        .respond_with(ok(trip_detail_body(10, 1, 0, 0)))
+        .expect(u64::try_from(crate::format::MAX_EVENT_TRIPS).unwrap())
+        .mount(&backend)
+        .await;
+    let mcp = connect(car_server(&backend, &Policy::default(), None)).await;
+
+    let (summary, data) = parts(
+        &call(
+            &mcp,
+            "get_trips",
+            json!({ "date": "2026-11-17", "with_events": true }),
+        )
+        .await,
+    );
+    assert!(summary.contains("25 trips"), "{summary}");
+    assert!(summary.contains("events for 20 of them"), "{summary}");
+    let trips = data["trips"].as_array().unwrap();
+    assert_eq!(trips.len(), 25);
+    assert_eq!(trips[19]["harsh_braking_events"], 1);
+    assert!(trips[20].get("harsh_braking_events").is_none());
+    assert_eq!(data["events_totals"]["trips_counted"], 20);
+    assert_eq!(data["events_totals"]["harsh_braking_events"], 20);
+    let note = data["events_truncated"].as_str().unwrap();
+    assert!(note.contains("1 to 20 of 25"), "{note}");
 }
 
 // ----- commands -----

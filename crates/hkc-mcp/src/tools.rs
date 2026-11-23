@@ -20,7 +20,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use hkconnect::{
-    Brand, Celsius, Client, ClimateOptions, CommandId, CommandStatus, Destination, Session, Vehicle,
+    Brand, Celsius, Client, ClimateOptions, CommandId, CommandStatus, Destination, Session,
+    TripDay, TripDetail, Vehicle,
 };
 use jiff::Timestamp;
 use jiff::civil::Date;
@@ -193,10 +194,22 @@ pub struct TripsArgs {
     /// A day as YYYY-MM-DD (India time) to list that day's trips.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
-    /// With date: the trip number (1 = earliest that day) to get its GPS
-    /// route and driving events.
+    /// With date: the trip number (1 = earliest that day) to get that trip's
+    /// totals and driving events (harsh braking, rapid acceleration,
+    /// speeding).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trip: Option<u32>,
+    /// With date and trip: also return the trip's GPS route (up to 400
+    /// `[lat, lon]` points, tens of KB). Only set it when the user wants to
+    /// see or map the path; leave it off for distances, times and events.
+    #[serde(default)]
+    pub include_route: bool,
+    /// With date and no trip: also fetch each trip's distance, top speed and
+    /// driving events, plus the day's event totals, in one call (one extra
+    /// request per trip, made one at a time; at most 20 trips). Use it for
+    /// driving reports instead of calling trip=N for every trip.
+    #[serde(default)]
+    pub with_events: bool,
 }
 
 /// Arguments for `check_command`.
@@ -732,6 +745,15 @@ impl CarServer {
         if args.trip.is_some() && args.date.is_none() {
             return Err("trip needs a date: the trip number is counted within that day.".into());
         }
+        if args.include_route && args.trip.is_none() {
+            return Err(
+                "include_route needs a date and a trip: routes are returned one trip at a time."
+                    .into(),
+            );
+        }
+        if args.with_events && args.date.is_none() {
+            return Err("with_events needs a date: it adds events to that day's trips.".into());
+        }
         let car = self.car(args.vehicle.as_deref()).await?;
         trace.car(&car);
         let client = &self.backend.client;
@@ -766,9 +788,7 @@ impl CarServer {
             .await
             .map_err(|e| format!("Could not read trips for {date}: {e}"))?;
         let Some(n) = args.trip else {
-            let listing = format::trip_day(&car, &day);
-            let summary = format!("{}: {} trips on {date}.", car.name, day.trips.len());
-            return Ok(success(summary, &listing));
+            return Ok(self.day_listing(&car, date, &day, args.with_events).await);
         };
         let trips = format::sorted_trips(&day);
         let Some(trip) = usize::try_from(n)
@@ -785,17 +805,79 @@ impl CarServer {
             .api(client.trip_detail(&car, trip))
             .await
             .map_err(|e| format!("Could not read trip {n} of {date}: {e}"))?;
-        let route = format::trip_detail(&car, date, n, &detail);
+        let shaped = format::trip_detail(&car, date, n, &detail, args.include_route);
         let km = detail
             .totals
             .distance_km
             .map_or_else(|| "distance unknown".into(), |d| format!("{d:.1} km"));
+        let route = if args.include_route {
+            format!("{} route points", detail.route.len())
+        } else {
+            format!(
+                "route of {} points left out (include_route=true to get it)",
+                detail.route.len()
+            )
+        };
+        let summary = format!("{}: trip {n} on {date}, {km}, {route}.", car.name);
+        Ok(success(summary, &shaped))
+    }
+
+    /// A day's trips; with `with_events`, also each trip's driving events
+    /// (see [`Self::day_events`]).
+    async fn day_listing(
+        &self,
+        car: &Vehicle,
+        date: Date,
+        day: &TripDay,
+        with_events: bool,
+    ) -> CallToolResult {
+        if !with_events {
+            let listing = format::trip_day(car, day, None);
+            let summary = format!("{}: {} trips on {date}.", car.name, day.trips.len());
+            return success(summary, &listing);
+        }
+        let events = self.day_events(car, day).await;
+        let listing = format::trip_day(car, day, Some(&events));
+        let count = |f: fn(&TripDetail) -> Option<u32>| -> u32 {
+            events.details.iter().filter_map(f).sum()
+        };
+        let covered = if events.details.len() == day.trips.len() {
+            "all".to_owned()
+        } else {
+            format!("{} of them", events.details.len())
+        };
         let summary = format!(
-            "{}: trip {n} on {date}, {km}, {} route points.",
+            "{}: {} trips on {date}; events for {covered}: {} harsh braking, {} rapid \
+             acceleration, {} speeding.",
             car.name,
-            detail.route.len()
+            day.trips.len(),
+            count(|d| d.hard_braking),
+            count(|d| d.rapid_acceleration),
+            count(|d| d.speeding),
         );
-        Ok(success(summary, &route))
+        success(summary, &listing)
+    }
+
+    /// Fetch the detail of the day's first [`format::MAX_EVENT_TRIPS`] trips,
+    /// one request at a time (never concurrently, to stay well inside the
+    /// server's rate limits), stopping at the first failure.
+    async fn day_events(&self, car: &Vehicle, day: &TripDay) -> format::DayEvents {
+        let client = &self.backend.client;
+        let mut events = format::DayEvents::default();
+        for (i, trip) in format::sorted_trips(day)
+            .into_iter()
+            .take(format::MAX_EVENT_TRIPS)
+            .enumerate()
+        {
+            match self.api(client.trip_detail(car, trip)).await {
+                Ok(detail) => events.details.push(detail),
+                Err(e) => {
+                    events.error = Some(format!("Could not read trip {}: {e}", i + 1));
+                    break;
+                }
+            }
+        }
+        events
     }
 
     /// Send `action` to `car`, once.
@@ -1121,9 +1203,13 @@ impl CarServer {
         description = "Trip history (dates and times in India Standard Time). With no \
                        month or date: this month's totals and the days that had trips. \
                        month=YYYY-MM: that month. date=YYYY-MM-DD: that day's trips, \
-                       numbered from 1 (earliest). date plus trip=N: that trip's GPS route \
-                       (thinned to at most 400 points) and harsh braking, rapid \
-                       acceleration and speeding counts.",
+                       numbered from 1 (earliest); add with_events=true to also get every \
+                       trip's distance, top speed and harsh braking, rapid acceleration and \
+                       speeding counts in one call (best for driving reports; at most 20 \
+                       trips). date plus trip=N: that trip's totals and driving events. \
+                       The GPS route (up to 400 points, large) is left out unless \
+                       include_route=true; set it only when the user wants to see or map \
+                       the path.",
         annotations(
             title = "Trip history",
             read_only_hint = true,

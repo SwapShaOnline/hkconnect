@@ -100,9 +100,13 @@ enum Command {
         /// A day, e.g. 2026-11-17: lists that day's trips.
         #[arg(long)]
         day: Option<jiff::civil::Date>,
-        /// With --day: show the route and driving events of trip N.
+        /// With --day: show the driving events of trip N.
         #[arg(long, requires = "day")]
         trip: Option<usize>,
+        /// With --trip and --json: include the trip's full GPS route (left
+        /// out by default; it is most of the output).
+        #[arg(long, requires = "trip")]
+        route: bool,
     },
     /// Turn valet mode on or off (needs your PIN; experimental).
     Valet {
@@ -291,8 +295,14 @@ async fn read(cli: &Cli, client: &Client, car: &Vehicle) -> Result<bool> {
                 tokio::try_join!(client.capabilities(car), client.maintenance(car))?;
             output::info(car, &caps, &maintenance, cli.json)?;
         }
-        Command::Trips { month, day, trip } => {
-            trips(client, car, month.as_deref(), *day, *trip, cli.json).await?;
+        Command::Trips {
+            month,
+            day,
+            trip,
+            route,
+        } => {
+            let route = *route;
+            trips(client, car, month.as_deref(), *day, *trip, route, cli.json).await?;
         }
         Command::Check { id } => {
             let status = client.command_status(car, &CommandId::new(id)).await?;
@@ -500,6 +510,7 @@ async fn trips(
     month: Option<&str>,
     day: Option<jiff::civil::Date>,
     trip: Option<usize>,
+    route: bool,
     json: bool,
 ) -> Result<()> {
     let Some(day) = day else {
@@ -521,7 +532,7 @@ async fn trips(
         .and_then(|i| listing.trips.get(i))
         .with_context(|| format!("{day} has {} trips; pick 1 to {0}", listing.trips.len()))?;
     let detail = client.trip_detail(car, chosen).await?;
-    output::trip_detail(n, &detail, json)
+    output::trip_detail(n, &detail, json, route)
 }
 
 fn parse_month(raw: &str) -> Result<(i16, i8)> {

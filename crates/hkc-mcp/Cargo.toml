@@ -19,7 +19,7 @@ base64 = "0.23.1"
 clap = { version = "4.6.9", features = ["derive", "env"] }
 directories = "6.0.0"
 getrandom = "0.4.3"
-hkconnect = { version = "0.1.0", path = "../hkconnect" }
+hkconnect = { version = "0.1.1", path = "../hkconnect" }
 jiff = { version = "1.0.2", features = ["serde"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2"] }
 rmcp = { version = "3.11.0", default-features = false, features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }

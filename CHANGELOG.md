@@ -9,12 +9,33 @@ library and the `hkc` CLI are versioned together.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-23
+
 ### Added
 
 - Prebuilt `hkc` and `hkc-mcp` binaries for macOS, Linux and Windows on
   GitHub Releases, with shell and PowerShell installers, a Homebrew tap
   (`brew install SwapShaOnline/tap/hkc`) and `cargo binstall` support.
   Releases, including crates.io publishing, now run from a version tag.
+- `hkc-mcp`: `get_trips` takes `with_events=true` with a date to include
+  every trip's distance, top speed and harsh braking, rapid acceleration
+  and speeding counts (plus day totals) in one call. The trips are fetched
+  one at a time, at most 20 per call; the result says when it was cut short.
+- `hkc trips --day D --trip N --json --route` includes the trip's GPS route.
+
+### Changed
+
+- `hkc-mcp`: `get_trips` with a date and trip now leaves out the GPS route
+  unless `include_route=true`, returning `route_points_total` and a hint
+  instead. A trip's totals and events drop from about 8 KB to about 0.6 KB.
+- `hkc trips --day D --trip N --json` leaves out the route unless `--route`
+  is given, and reports `route_points_total` instead.
+
+### Fixed
+
+- crates.io pages now link to the repository's new home,
+  https://github.com/SwapShaOnline/hkconnect.
+- The README describes `hkc-mcp`.
 
 ## [0.1.0] - 2026-11-23
 
@@ -110,5 +131,6 @@ Initial release.
   records both and checks them); and `hkc` keeps a single `session.json` per
   machine, so switching accounts or brands logs in again.
 
-[Unreleased]: https://github.com/SwapShaOnline/hkconnect/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/SwapShaOnline/hkconnect/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/SwapShaOnline/hkconnect/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SwapShaOnline/hkconnect/releases/tag/v0.1.0

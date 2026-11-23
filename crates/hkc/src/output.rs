@@ -364,9 +364,20 @@ pub fn trip_day(day: &TripDay, json: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn trip_detail(n: usize, d: &TripDetail, json: bool) -> Result<()> {
+/// A trip's detail as JSON: the library's [`TripDetail`] with the route
+/// replaced by `route_points_total` unless `route` is set.
+pub fn trip_detail_json(d: &TripDetail, route: bool) -> Result<serde_json::Value> {
+    let mut value = serde_json::to_value(d)?;
+    if !route && let Some(obj) = value.as_object_mut() {
+        obj.remove("route");
+        obj.insert("route_points_total".into(), d.route.len().into());
+    }
+    Ok(value)
+}
+
+pub fn trip_detail(n: usize, d: &TripDetail, json: bool, route: bool) -> Result<()> {
     if json {
-        return print_json(d);
+        return print_json(&trip_detail_json(d, route)?);
     }
     println!(
         "Trip {n}: {}-{}, {}",
@@ -386,7 +397,7 @@ pub fn trip_detail(n: usize, d: &TripDetail, json: bool) -> Result<()> {
         );
         row("To", format!("{:.5}, {:.5}", last.latitude, last.longitude));
     }
-    println!("\nFull route: add --json");
+    println!("\nFull route: add --json --route");
     Ok(())
 }
 
@@ -405,6 +416,39 @@ mod tests {
             clean("line one\n\tline two — ok"),
             "line one\n\tline two — ok"
         );
+    }
+
+    fn detail_with_route(points: u32) -> TripDetail {
+        let route: Vec<_> = (0..points)
+            .map(|i| json!({ "at": null, "latitude": 12.97 + f64::from(i) * 1e-4, "longitude": 77.59 }))
+            .collect();
+        serde_json::from_value(json!({
+            "started_at": "2026-11-17T02:30:03Z",
+            "ended_at": "2026-11-17T02:46:34Z",
+            "totals": { "drive_minutes": 15, "idle_minutes": 1, "distance_km": 13.0,
+                        "average_speed_kmh": 59.0, "max_speed_kmh": 91.0 },
+            "hard_braking": 1,
+            "rapid_acceleration": 0,
+            "speeding": 2,
+            "route": route,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn trip_json_leaves_out_the_route_unless_asked() {
+        let d = detail_with_route(500);
+        let lean = trip_detail_json(&d, false).unwrap();
+        assert!(lean.get("route").is_none());
+        assert_eq!(lean["route_points_total"], 500);
+        assert_eq!(lean["hard_braking"], 1);
+        assert_eq!(lean["speeding"], 2);
+        assert_eq!(lean["totals"]["max_speed_kmh"], 91.0);
+
+        let full = trip_detail_json(&d, true).unwrap();
+        assert_eq!(full["route"].as_array().unwrap().len(), 500);
+        assert!(full.get("route_points_total").is_none());
+        assert!(lean.to_string().len() * 20 < full.to_string().len());
     }
 
     #[test]

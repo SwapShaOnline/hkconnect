@@ -78,7 +78,7 @@ directory (mode 0600), separate from `hkc`'s session.
 | `get_status` | Lock state, doors, engine, climate, fuel, warnings; cached unless `refresh=true` | read-only | on |
 | `get_location` | Last parked position, its age, and a map link | read-only | on |
 | `get_vehicle_info` | Model, features, odometer, service intervals | read-only | on |
-| `get_trips` | Month summary, a day's trips, or one trip's route and events | read-only | on |
+| `get_trips` | Month summary, a day's trips (`with_events=true`: plus every trip's driving events, up to 20 trips, one request each), or one trip's totals and events (`include_route=true`: plus its GPS route, up to 400 points) | read-only | on |
 | `check_command` | Result of an earlier command, by id | read-only | on |
 | `lock` | Lock the doors | not destructive | on |
 | `stop_climate` | Stop a remote start (needs PIN) | not destructive | on |

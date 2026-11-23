@@ -18,6 +18,9 @@ use serde_json::{Map, Value, json};
 /// evenly (first and last points are always kept).
 pub const MAX_ROUTE_POINTS: usize = 400;
 
+/// Most trips whose detail is fetched for one `with_events` day listing.
+pub const MAX_EVENT_TRIPS: usize = 20;
+
 /// Indian Standard Time, UTC+05:30.
 pub fn ist() -> TimeZone {
     TimeZone::fixed(Offset::from_seconds(5 * 3600 + 30 * 60).expect("valid offset"))
@@ -323,7 +326,7 @@ pub fn trip_month(car: &Vehicle, year: i16, month: i8, m: &TripMonth) -> Value {
     })
 }
 
-fn trip_entry(n: usize, t: &Trip) -> Value {
+fn trip_entry(n: usize, t: &Trip, detail: Option<&TripDetail>) -> Value {
     let mut m = Map::new();
     put(&mut m, "trip", n);
     put(&mut m, "start", t.started_at.map(ist_clock));
@@ -337,23 +340,117 @@ fn trip_entry(n: usize, t: &Trip) -> Value {
     if let Some(c) = t.end {
         put(&mut m, "to", json!([c.latitude, c.longitude]));
     }
+    if let Some(d) = detail {
+        put(
+            &mut m,
+            "distance_km",
+            d.totals.distance_km.map(|v| round(v, 1)),
+        );
+        put(
+            &mut m,
+            "max_speed_kmh",
+            d.totals.max_speed_kmh.map(|v| round(v, 0)),
+        );
+        events(&mut m, d);
+    }
     Value::Object(m)
 }
 
-/// The trips on one day, numbered from 1 in time order.
-pub fn trip_day(car: &Vehicle, d: &TripDay) -> Value {
-    json!({
-        "vehicle": car.name,
-        "date": d.date.to_string(),
-        "times": "IST",
-        "totals": totals(&d.totals),
-        "trips": sorted_trips(d)
+/// The harsh braking, rapid acceleration and speeding counts of a trip.
+fn events(m: &mut Map<String, Value>, d: &TripDetail) {
+    put(m, "harsh_braking_events", d.hard_braking);
+    put(m, "rapid_acceleration_events", d.rapid_acceleration);
+    put(m, "speeding_events", d.speeding);
+}
+
+/// Driving events fetched for a day's trips (`with_events`): `details[i]` is
+/// trip `i + 1` in time order; trips past the end were not fetched.
+#[derive(Debug, Default)]
+pub struct DayEvents {
+    /// Details of the first trips of the day, in time order.
+    pub details: Vec<TripDetail>,
+    /// Why fetching stopped early, if a request failed.
+    pub error: Option<String>,
+}
+
+/// The trips on one day, numbered from 1 in time order. With `events`, the
+/// trips it covers also carry their distance, top speed and driving events.
+pub fn trip_day(car: &Vehicle, d: &TripDay, events: Option<&DayEvents>) -> Value {
+    let trips = sorted_trips(d);
+    let details = events.map_or(&[][..], |e| e.details.as_slice());
+    let mut m = Map::new();
+    put(&mut m, "vehicle", car.name.clone());
+    put(&mut m, "date", d.date.to_string());
+    put(&mut m, "times", "IST");
+    put(&mut m, "totals", totals(&d.totals));
+    put(
+        &mut m,
+        "trips",
+        trips
             .iter()
             .enumerate()
-            .map(|(i, t)| trip_entry(i + 1, t))
+            .map(|(i, t)| trip_entry(i + 1, t, details.get(i)))
             .collect::<Vec<_>>(),
-        "hint": "call get_trips with the same date and trip=N for a trip's route and driving events",
-    })
+    );
+    let Some(events) = events else {
+        put(
+            &mut m,
+            "hint",
+            "call get_trips with the same date and trip=N for one trip's driving events, \
+             or with_events=true for every trip's events in one call",
+        );
+        return Value::Object(m);
+    };
+    let sum = |f: fn(&TripDetail) -> Option<u32>| -> Option<u32> {
+        details.iter().filter_map(f).reduce(|a, b| a + b)
+    };
+    let mut t = Map::new();
+    put(&mut t, "trips_counted", details.len());
+    put(&mut t, "harsh_braking_events", sum(|d| d.hard_braking));
+    put(
+        &mut t,
+        "rapid_acceleration_events",
+        sum(|d| d.rapid_acceleration),
+    );
+    put(&mut t, "speeding_events", sum(|d| d.speeding));
+    put(
+        &mut t,
+        "max_speed_kmh",
+        details
+            .iter()
+            .filter_map(|d| d.totals.max_speed_kmh)
+            .reduce(f64::max)
+            .map(|v| round(v, 0)),
+    );
+    put(&mut m, "events_totals", Value::Object(t));
+    if let Some(e) = &events.error {
+        put(
+            &mut m,
+            "events_error",
+            format!(
+                "{e}. Events are missing for trip {} and later; get them with trip=N.",
+                details.len() + 1
+            ),
+        );
+    } else if details.len() < trips.len() {
+        put(
+            &mut m,
+            "events_truncated",
+            format!(
+                "events cover trips 1 to {} of {} (at most {MAX_EVENT_TRIPS} per call); \
+                 get the rest with trip=N",
+                details.len(),
+                trips.len()
+            ),
+        );
+    }
+    put(
+        &mut m,
+        "hint",
+        "call get_trips with the same date and trip=N for one trip's full detail; \
+         add include_route=true only to show or map its path",
+    );
+    Value::Object(m)
 }
 
 /// The day's trips in time order (the server's order is not guaranteed).
@@ -363,9 +460,17 @@ pub fn sorted_trips(d: &TripDay) -> Vec<&Trip> {
     trips
 }
 
-/// One trip's detail, with the route thinned to at most
-/// [`MAX_ROUTE_POINTS`] points as `[lat, lon]` pairs.
-pub fn trip_detail(car: &Vehicle, date: Date, n: u32, d: &TripDetail) -> Value {
+/// One trip's detail: totals and driving events, plus with `include_route`
+/// the route thinned to at most [`MAX_ROUTE_POINTS`] `[lat, lon]` pairs.
+/// Without it the route is left out (it is most of the size) and a hint says
+/// how to get it.
+pub fn trip_detail(
+    car: &Vehicle,
+    date: Date,
+    n: u32,
+    d: &TripDetail,
+    include_route: bool,
+) -> Value {
     let mut m = Map::new();
     put(&mut m, "vehicle", car.name.clone());
     put(&mut m, "date", date.to_string());
@@ -373,22 +478,32 @@ pub fn trip_detail(car: &Vehicle, date: Date, n: u32, d: &TripDetail) -> Value {
     put(&mut m, "start", d.started_at.map(ist_time));
     put(&mut m, "end", d.ended_at.map(ist_time));
     put(&mut m, "totals", totals(&d.totals));
-    put(&mut m, "harsh_braking_events", d.hard_braking);
-    put(&mut m, "rapid_acceleration_events", d.rapid_acceleration);
-    put(&mut m, "speeding_events", d.speeding);
-    let route = thin(&d.route, MAX_ROUTE_POINTS);
+    events(&mut m, d);
     put(&mut m, "route_points_total", d.route.len());
-    if route.len() < d.route.len() {
-        put(&mut m, "route_points_shown", route.len());
+    if include_route {
+        let route = thin(&d.route, MAX_ROUTE_POINTS);
+        if route.len() < d.route.len() {
+            put(&mut m, "route_points_shown", route.len());
+        }
+        put(
+            &mut m,
+            "route",
+            route
+                .iter()
+                .map(|p| json!([round(p.latitude, 5), round(p.longitude, 5)]))
+                .collect::<Vec<_>>(),
+        );
+    } else if !d.route.is_empty() {
+        put(
+            &mut m,
+            "hint",
+            format!(
+                "route left out; call again with include_route=true for the GPS path \
+                 (up to {MAX_ROUTE_POINTS} points), only when the user wants to see or \
+                 map where the car went"
+            ),
+        );
     }
-    put(
-        &mut m,
-        "route",
-        route
-            .iter()
-            .map(|p| json!([round(p.latitude, 5), round(p.longitude, 5)]))
-            .collect::<Vec<_>>(),
-    );
     if let (Some(first), Some(last)) = (d.route.first(), d.route.last()) {
         put(
             &mut m,
