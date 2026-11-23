@@ -937,13 +937,7 @@ impl CarServer {
             let now = Timestamp::now();
             let when = l.updated_at.map_or_else(
                 || "time unknown".into(),
-                |at| {
-                    format!(
-                        "as of {} ({} old)",
-                        format::ist_time(at),
-                        format::age(now, at)
-                    )
-                },
+                |at| format!("as of {} ({})", format::ist_time(at), format::ago(now, at)),
             );
             let summary = format!(
                 "{} parked at {:.5}, {:.5}, {when}.",

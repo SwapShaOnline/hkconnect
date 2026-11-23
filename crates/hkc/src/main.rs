@@ -1,5 +1,6 @@
 //! `hkc`: control a Hyundai or Kia (India) car from the terminal.
 
+mod bench;
 mod output;
 mod store;
 
@@ -133,6 +134,15 @@ enum Command {
     },
     /// Check the result of an earlier command.
     Check { id: String },
+    /// Measure API latency with read-only calls (never wakes the car).
+    Bench {
+        /// Calls per endpoint.
+        #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u16).range(1..=20))]
+        runs: u16,
+        /// Pause between calls, in milliseconds (protects the rate limit).
+        #[arg(long, default_value_t = 1000)]
+        gap_ms: u64,
+    },
     /// Log in now and save the session.
     Login,
     /// Delete the saved session.
@@ -262,6 +272,11 @@ async fn execute(cli: &Cli, client: &Client) -> Result<ExitCode> {
 /// Run a read-only command. Returns `false` if the command isn't one.
 async fn read(cli: &Cli, client: &Client, car: &Vehicle) -> Result<bool> {
     match &cli.command {
+        Command::Bench { runs, gap_ms } => {
+            let gap = Duration::from_millis(*gap_ms);
+            let results = bench::run(client, car, usize::from(*runs), gap).await?;
+            bench::print(&results, cli.json)?;
+        }
         Command::Status { refresh } => {
             let status = if *refresh {
                 client.refresh_status(car).await?

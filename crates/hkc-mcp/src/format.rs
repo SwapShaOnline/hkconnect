@@ -40,6 +40,14 @@ fn ist_clock(ts: Timestamp) -> String {
     ts.to_zoned_datetime(ist()).strftime("%H:%M").to_string()
 }
 
+/// How long ago, for sentences: `just now`, `12 min ago`, `3 h 5 min ago`.
+pub fn ago(now: Timestamp, then: Timestamp) -> String {
+    match age(now, then) {
+        a if a == "just now" => a,
+        a => format!("{a} ago"),
+    }
+}
+
 /// A short human age: `just now`, `12 min`, `3 h 5 min`, `2 days`.
 pub fn age(now: Timestamp, then: Timestamp) -> String {
     let secs = (now - then).as_secs().max(0);
@@ -208,7 +216,7 @@ pub fn status_summary(car: &Vehicle, s: &VehicleStatus, live: bool, now: Timesta
         .unwrap_or_default();
     let when = match s.updated_at {
         Some(at) if live => format!("live as of {}", ist_time(at)),
-        Some(at) => format!("cached, as of {} ({} old)", ist_time(at), age(now, at)),
+        Some(at) => format!("cached, as of {} ({})", ist_time(at), ago(now, at)),
         None if live => "live".into(),
         None => "cached, time unknown".into(),
     };
@@ -412,6 +420,8 @@ mod tests {
         let now: Timestamp = "2026-11-23T12:00:00Z".parse().unwrap();
         let at = |s: i64| now - SignedDuration::from_secs(s);
         assert_eq!(age(now, at(10)), "just now");
+        assert_eq!(ago(now, at(10)), "just now");
+        assert_eq!(ago(now, at(600)), "10 min ago");
         assert_eq!(age(now, at(600)), "10 min");
         assert_eq!(age(now, at(3600)), "1 h");
         assert_eq!(age(now, at(3 * 3600 + 300)), "3 h 5 min");

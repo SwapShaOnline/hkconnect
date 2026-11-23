@@ -11,6 +11,8 @@ library and the `hkc` CLI are versioned together.
 
 ## [0.1.0] - 2026-11-23
 
+Verified live on a 2024 Hyundai Creta: all reads, and lock (car confirmed in about 30 s). `hkc bench` measures API latency; results are in docs/performance.md.
+
 Initial release.
 
 ### Added
