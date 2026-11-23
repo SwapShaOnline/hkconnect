@@ -20,6 +20,16 @@ RUN apt-get update \
     && mkdir -p /data && chown hkc /data && chmod 700 /data
 COPY --from=build /src/target/release/hkc-mcp /usr/local/bin/hkc-mcp
 USER hkc
+# The server must listen on all interfaces *inside* the container to be
+# reachable at all. Publish the port on the host's loopback only
+# (`-p 127.0.0.1:8787:8787`) and put the tunnel or proxy in front; never
+# `-p 8787:8787`, which exposes plain HTTP to the network.
+#
+# X-Forwarded-For is believed only from a loopback peer unless
+# HKC_MCP_TRUSTED_PROXIES lists the proxy's address. Seen from inside the
+# container, a proxy on the host connects from the Docker bridge (e.g.
+# 172.17.0.1), so set HKC_MCP_TRUSTED_PROXIES to that address (see
+# docs/mcp.md) rather than trusting everyone.
 ENV HKC_MCP_DATA_DIR=/data \
     HKC_MCP_LISTEN=0.0.0.0:8787
 VOLUME ["/data"]

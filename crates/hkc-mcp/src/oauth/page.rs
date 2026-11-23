@@ -26,7 +26,8 @@ h1{font-size:1.3rem}code{word-break:break-all}\
 .box{background:#fff;border:1px solid #ddd;border-radius:8px;padding:1rem 1.25rem}\
 input[type=password]{width:100%;padding:.6rem;font-size:1rem;box-sizing:border-box;margin:.25rem 0 1rem}\
 button{padding:.6rem 1.2rem;font-size:1rem}.err{color:#b00020;font-weight:600}\
-.muted{color:#666;font-size:.9rem}";
+.muted{color:#666;font-size:.9rem}\
+.host{font-family:ui-monospace,monospace;font-size:1.1rem;word-break:break-all}";
 
 /// A complete HTML response with defensive headers.
 pub fn html(status: StatusCode, title: &str, body: &str) -> Response {
@@ -79,8 +80,12 @@ pub fn error(status: StatusCode, message: &str) -> Response {
 /// What the sign-in form shows and posts back.
 #[derive(Debug)]
 pub struct SignIn<'a> {
-    /// Who is asking (client name or id).
-    pub client: &'a str,
+    /// The client id.
+    pub client_id: &'a str,
+    /// The host of a URL client id: who the client really is.
+    pub client_host: Option<&'a str>,
+    /// The name the client gave itself (unverified; shown de-emphasised).
+    pub client_name: Option<&'a str>,
     /// Where the browser goes after sign-in (shown as a host).
     pub redirect_host: &'a str,
     /// The pending request id.
@@ -92,17 +97,57 @@ pub struct SignIn<'a> {
 }
 
 /// The password form.
+///
+/// The client is identified by the host of its client id URL, which the
+/// server fetched; the name it gives itself is anyone's choice, so it is
+/// shown only as "calls itself". If the client id host and the return host
+/// differ, a warning says so.
 pub fn sign_in(status: StatusCode, s: &SignIn<'_>) -> Response {
     let error = s
         .error
         .map(|e| format!("<p class=\"err\">{}</p>", escape(e)))
         .unwrap_or_default();
+    let who = match s.client_host {
+        Some(h) => format!(
+            "<p>An app from <strong class=\"host\">{}</strong> wants to read and control \
+             your car through hkc-mcp.</p>",
+            escape(h)
+        ),
+        None => format!(
+            "<p>A dynamically registered app (<code>{}</code>) wants to read and control \
+             your car through hkc-mcp.</p>",
+            escape(s.client_id)
+        ),
+    };
+    let name = s
+        .client_name
+        .map(|n| {
+            format!(
+                "<p class=\"muted\">It calls itself \u{201c}{}\u{201d}. Any app can pick any \
+                 name; trust the addresses, not the name.</p>",
+                escape(n)
+            )
+        })
+        .unwrap_or_default();
+    let mismatch = match s.client_host {
+        Some(h) if !h.eq_ignore_ascii_case(s.redirect_host) => format!(
+            "<p class=\"err\">Careful: the app is from <code>{}</code> but sends your \
+             browser back to <code>{}</code>. Unless you expected exactly this, close \
+             this page.</p>",
+            escape(h),
+            escape(s.redirect_host)
+        ),
+        _ => String::new(),
+    };
     let body = format!(
         "<h1>Allow access to your car?</h1>\
          <div class=\"box\">\
-         <p><strong>{client}</strong> wants to read and control your car through hkc-mcp.</p>\
-         <p class=\"muted\">After you sign in, your browser returns to <code>{host}</code>. \
-         Only continue if you started this from Claude (or another app you trust).</p>\
+         {who}{name}\
+         <p>After you sign in, your browser returns to \
+         <strong class=\"host\">{host}</strong>.</p>\
+         {mismatch}\
+         <p class=\"muted\">Only continue if you started this yourself from Claude (or \
+         another app you trust) just now.</p>\
          {error}\
          <form method=\"post\" action=\"/authorize\">\
          <input type=\"hidden\" name=\"request\" value=\"{request}\">\
@@ -112,7 +157,6 @@ pub fn sign_in(status: StatusCode, s: &SignIn<'_>) -> Response {
          <button type=\"submit\">Allow</button>\
          </form></div>\
          <p class=\"muted\">To refuse, close this page.</p>",
-        client = escape(s.client),
         host = escape(s.redirect_host),
         request = escape(s.request),
         csrf = escape(s.csrf),
@@ -123,6 +167,48 @@ pub fn sign_in(status: StatusCode, s: &SignIn<'_>) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn page(client_host: Option<&str>, redirect_host: &str) -> String {
+        let r = sign_in(
+            StatusCode::OK,
+            &SignIn {
+                client_id: "https://evil.example/c.json",
+                client_host,
+                client_name: Some("Claude"),
+                redirect_host,
+                request: "r",
+                csrf: "c",
+                error: None,
+            },
+        );
+        let body = r.into_body();
+        let bytes = futures_body(body);
+        String::from_utf8(bytes).unwrap()
+    }
+
+    fn futures_body(body: axum::body::Body) -> Vec<u8> {
+        use http_body_util::BodyExt as _;
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(body.collect())
+            .unwrap()
+            .to_bytes()
+            .to_vec()
+    }
+
+    #[test]
+    fn shows_the_client_host_and_warns_on_mismatch() {
+        let html = page(Some("evil.example"), "claude.ai");
+        assert!(html.contains("<strong class=\"host\">evil.example</strong>"));
+        assert!(html.contains("calls itself \u{201c}Claude\u{201d}"));
+        assert!(!html.contains("<strong>Claude</strong>"));
+        assert!(html.contains("Careful"));
+        let html = page(Some("claude.ai"), "claude.ai");
+        assert!(!html.contains("Careful"));
+        let html = page(None, "localhost");
+        assert!(html.contains("dynamically registered"));
+    }
 
     #[test]
     fn escapes_markup() {

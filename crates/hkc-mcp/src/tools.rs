@@ -5,6 +5,11 @@
 //! message written for the model, never protocol errors, so the model can
 //! read and relay them.
 //!
+//! Every tool call, reads included, is written to the audit log (tool,
+//! arguments, caller, car, outcome; never coordinates or secrets). Text that
+//! comes from Hyundai's servers (car names, error messages) has control and
+//! bidirectional-override characters removed before it reaches the model.
+//!
 //! Commands are sent once and never retried here. After the server accepts
 //! one, the tool waits (up to [`Settings::command_wait`]) for the car's
 //! answer; if it doesn't come in time, the result says so and points to
@@ -293,22 +298,92 @@ impl Action {
 
 // ----- results -----
 
+/// Whether `c` could hide or reorder text: a control character or a
+/// bidirectional formatting character.
+fn is_unsafe_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{200e}' | '\u{200f}' | '\u{061c}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+        )
+}
+
+/// `text` without control characters (except line breaks) and bidi
+/// overrides: server-provided strings can't smuggle hidden text to the
+/// model.
+pub fn sanitize(text: &str) -> String {
+    text.chars()
+        .filter(|c| *c == '\n' || !is_unsafe_char(*c))
+        .collect()
+}
+
+/// As [`sanitize`], and line breaks become spaces (for one-line values such
+/// as car names).
+fn sanitize_line(text: &str) -> String {
+    text.chars()
+        .map(|c| if c == '\n' { ' ' } else { c })
+        .filter(|c| !is_unsafe_char(*c))
+        .collect()
+}
+
+fn sanitize_value(value: &mut Value) {
+    match value {
+        Value::String(s) if s.chars().any(|c| c != '\n' && is_unsafe_char(c)) => {
+            *s = sanitize(s);
+        }
+        Value::Array(items) => items.iter_mut().for_each(sanitize_value),
+        Value::Object(map) => map.values_mut().for_each(sanitize_value),
+        _ => {}
+    }
+}
+
+fn blocks(summary: impl Into<String>, data: Option<&Value>) -> Vec<ContentBlock> {
+    let mut out = vec![ContentBlock::text(sanitize(&summary.into()))];
+    if let Some(data) = data {
+        let mut data = data.clone();
+        sanitize_value(&mut data);
+        out.push(ContentBlock::text(data.to_string()));
+    }
+    out
+}
+
 fn success(summary: impl Into<String>, data: &Value) -> CallToolResult {
-    CallToolResult::success(vec![
-        ContentBlock::text(summary),
-        ContentBlock::text(data.to_string()),
-    ])
+    CallToolResult::success(blocks(summary, Some(data)))
 }
 
 fn failure(message: impl Into<String>) -> CallToolResult {
-    CallToolResult::error(vec![ContentBlock::text(message)])
+    CallToolResult::error(blocks(message, None))
 }
 
 fn failure_with(summary: impl Into<String>, data: &Value) -> CallToolResult {
-    CallToolResult::error(vec![
-        ContentBlock::text(summary),
-        ContentBlock::text(data.to_string()),
-    ])
+    CallToolResult::error(blocks(summary, Some(data)))
+}
+
+/// What a read tool learned, for its audit line.
+#[derive(Debug, Default)]
+struct Trace(std::sync::Mutex<TraceData>);
+
+#[derive(Debug, Default)]
+struct TraceData {
+    vin: Option<String>,
+    command_id: Option<String>,
+    outcome: Option<&'static str>,
+}
+
+impl Trace {
+    fn data(&self) -> std::sync::MutexGuard<'_, TraceData> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn car(&self, car: &Vehicle) {
+        self.data().vin = Some(car.vin.clone());
+    }
+
+    fn outcome(&self, outcome: &'static str) {
+        self.data().outcome = Some(outcome);
+    }
 }
 
 type ToolResult = Result<CallToolResult, McpError>;
@@ -490,7 +565,11 @@ impl CarServer {
         {
             return Ok(list.clone());
         }
-        let list = self.api(self.backend.client.vehicles()).await?;
+        let mut list = self.api(self.backend.client.vehicles()).await?;
+        for v in &mut list {
+            v.name = sanitize_line(&v.name);
+            v.model = sanitize_line(&v.model);
+        }
         *cache = Some((Instant::now(), list.clone()));
         Ok(list)
     }
@@ -529,22 +608,51 @@ impl CarServer {
         }
     }
 
-    /// Run a read tool body, then save the session.
-    async fn read<F>(&self, body: F) -> ToolResult
+    /// Run a read tool body, save the session, and audit the call.
+    async fn read<F>(
+        &self,
+        tool: &'static str,
+        ctx: &RequestContext<RoleServer>,
+        arguments: &Value,
+        trace: &Trace,
+        body: F,
+    ) -> ToolResult
     where
         F: Future<Output = Result<CallToolResult, String>>,
     {
         let result = body.await.unwrap_or_else(failure);
         self.persist_session().await;
+        let failed = result.is_error == Some(true);
+        let error: Option<String> = failed
+            .then(|| {
+                result
+                    .content
+                    .first()
+                    .and_then(|c| c.as_text())
+                    .map(|t| t.text.chars().take(500).collect())
+            })
+            .flatten();
+        let t = std::mem::take(&mut *trace.data());
+        self.backend.audit.record(&Entry {
+            time: Timestamp::now(),
+            tool,
+            arguments,
+            client: &caller(ctx),
+            vin: t.vin.as_deref(),
+            command_id: t.command_id.as_deref(),
+            outcome: if failed {
+                "error"
+            } else {
+                t.outcome.unwrap_or("ok")
+            },
+            error: error.as_deref(),
+        });
         Ok(result)
     }
 
-    async fn status_body(
-        &self,
-        args: StatusArgs,
-        client_id: &str,
-    ) -> Result<CallToolResult, String> {
+    async fn status_body(&self, args: StatusArgs, trace: &Trace) -> Result<CallToolResult, String> {
         let car = self.car(args.vehicle.as_deref()).await?;
+        trace.car(&car);
         let client = &self.backend.client;
         let mut skipped = None;
         let live = if args.refresh {
@@ -563,18 +671,11 @@ impl CarServer {
         } else {
             self.api(client.status(&car)).await
         };
-        if live {
-            self.backend.audit.record(&Entry {
-                time: Timestamp::now(),
-                tool: "get_status",
-                arguments: &json!({ "vehicle": args.vehicle, "refresh": true }),
-                client: client_id,
-                vin: Some(&car.vin),
-                command_id: None,
-                outcome: if result.is_ok() { "refreshed" } else { "error" },
-                error: result.as_ref().err().map(ToString::to_string).as_deref(),
-            });
-        }
+        trace.outcome(match (live, skipped) {
+            (true, _) => "refreshed",
+            (false, Some(_)) => "refresh_skipped",
+            (false, None) => "cached",
+        });
         let status = result.map_err(|e| {
             if live {
                 format!(
@@ -624,7 +725,7 @@ impl CarServer {
         Ok(())
     }
 
-    async fn trips_body(&self, args: TripsArgs) -> Result<CallToolResult, String> {
+    async fn trips_body(&self, args: TripsArgs, trace: &Trace) -> Result<CallToolResult, String> {
         if args.month.is_some() && args.date.is_some() {
             return Err("Give either month or date, not both.".into());
         }
@@ -632,6 +733,7 @@ impl CarServer {
             return Err("trip needs a date: the trip number is counted within that day.".into());
         }
         let car = self.car(args.vehicle.as_deref()).await?;
+        trace.car(&car);
         let client = &self.backend.client;
         let Some(raw_date) = args.date.as_deref() else {
             let (year, month) = if let Some(m) = args.month.as_deref() {
@@ -867,8 +969,9 @@ impl CarServer {
             open_world_hint = true
         )
     )]
-    async fn list_vehicles(&self) -> ToolResult {
-        self.read(async {
+    async fn list_vehicles(&self, ctx: RequestContext<RoleServer>) -> ToolResult {
+        let trace = Trace::default();
+        self.read("list_vehicles", &ctx, &json!({}), &trace, async {
             let vehicles = self
                 .vehicles()
                 .await
@@ -902,8 +1005,16 @@ impl CarServer {
         Parameters(args): Parameters<StatusArgs>,
         ctx: RequestContext<RoleServer>,
     ) -> ToolResult {
-        let client_id = caller(&ctx);
-        self.read(self.status_body(args, &client_id)).await
+        let arguments = args_value(&args);
+        let trace = Trace::default();
+        self.read(
+            "get_status",
+            &ctx,
+            &arguments,
+            &trace,
+            self.status_body(args, &trace),
+        )
+        .await
     }
 
     #[tool(
@@ -918,9 +1029,15 @@ impl CarServer {
             open_world_hint = true
         )
     )]
-    async fn get_location(&self, Parameters(args): Parameters<VehicleArg>) -> ToolResult {
-        self.read(async {
+    async fn get_location(
+        &self,
+        Parameters(args): Parameters<VehicleArg>,
+        ctx: RequestContext<RoleServer>,
+    ) -> ToolResult {
+        let trace = Trace::default();
+        self.read("get_location", &ctx, &args_value(&args), &trace, async {
             let car = self.car(args.vehicle.as_deref()).await?;
+            trace.car(&car);
             let location = self
                 .api(self.backend.client.location(&car))
                 .await
@@ -960,31 +1077,43 @@ impl CarServer {
             open_world_hint = true
         )
     )]
-    async fn get_vehicle_info(&self, Parameters(args): Parameters<VehicleArg>) -> ToolResult {
-        self.read(async {
-            let car = self.car(args.vehicle.as_deref()).await?;
-            let client = &self.backend.client;
-            // Boxed: the two library futures together are large.
-            let (caps, maintenance) = Box::pin(async {
-                tokio::try_join!(
-                    self.api(client.capabilities(&car)),
-                    self.api(client.maintenance(&car))
-                )
-            })
-            .await
-            .map_err(|e| format!("Could not read {}'s details: {e}", car.name))?;
-            let odometer = maintenance
-                .odometer_km
-                .map(|k| format!(", odometer {k:.0} km"))
-                .unwrap_or_default();
-            let summary = format!(
-                "{}: {} {}{odometer}.",
-                car.name,
-                caps.model.as_deref().unwrap_or(&car.model),
-                caps.model_year.as_deref().unwrap_or("")
-            );
-            Ok(success(summary, &format::info(&car, &caps, &maintenance)))
-        })
+    async fn get_vehicle_info(
+        &self,
+        Parameters(args): Parameters<VehicleArg>,
+        ctx: RequestContext<RoleServer>,
+    ) -> ToolResult {
+        let trace = Trace::default();
+        self.read(
+            "get_vehicle_info",
+            &ctx,
+            &args_value(&args),
+            &trace,
+            async {
+                let car = self.car(args.vehicle.as_deref()).await?;
+                trace.car(&car);
+                let client = &self.backend.client;
+                // Boxed: the two library futures together are large.
+                let (caps, maintenance) = Box::pin(async {
+                    tokio::try_join!(
+                        self.api(client.capabilities(&car)),
+                        self.api(client.maintenance(&car))
+                    )
+                })
+                .await
+                .map_err(|e| format!("Could not read {}'s details: {e}", car.name))?;
+                let odometer = maintenance
+                    .odometer_km
+                    .map(|k| format!(", odometer {k:.0} km"))
+                    .unwrap_or_default();
+                let summary = format!(
+                    "{}: {} {}{odometer}.",
+                    car.name,
+                    caps.model.as_deref().unwrap_or(&car.model),
+                    caps.model_year.as_deref().unwrap_or("")
+                );
+                Ok(success(summary, &format::info(&car, &caps, &maintenance)))
+            },
+        )
         .await
     }
 
@@ -1003,8 +1132,21 @@ impl CarServer {
             open_world_hint = true
         )
     )]
-    async fn get_trips(&self, Parameters(args): Parameters<TripsArgs>) -> ToolResult {
-        self.read(self.trips_body(args)).await
+    async fn get_trips(
+        &self,
+        Parameters(args): Parameters<TripsArgs>,
+        ctx: RequestContext<RoleServer>,
+    ) -> ToolResult {
+        let arguments = args_value(&args);
+        let trace = Trace::default();
+        self.read(
+            "get_trips",
+            &ctx,
+            &arguments,
+            &trace,
+            self.trips_body(args, &trace),
+        )
+        .await
     }
 
     #[tool(
@@ -1021,18 +1163,26 @@ impl CarServer {
             open_world_hint = true
         )
     )]
-    async fn check_command(&self, Parameters(args): Parameters<CheckArgs>) -> ToolResult {
-        self.read(async {
+    async fn check_command(
+        &self,
+        Parameters(args): Parameters<CheckArgs>,
+        ctx: RequestContext<RoleServer>,
+    ) -> ToolResult {
+        let trace = Trace::default();
+        self.read("check_command", &ctx, &args_value(&args), &trace, async {
             let id = args.command_id.trim();
             if id.is_empty() {
                 return Err("command_id is empty.".into());
             }
             let car = self.car(args.vehicle.as_deref()).await?;
+            trace.car(&car);
+            trace.data().command_id = Some(id.to_owned());
             let status = self
                 .api(self.backend.client.command_status(&car, &CommandId::new(id)))
                 .await
                 .map_err(|e| format!("Could not check command {id}: {e}"))?;
             let outcome = outcome_name(status);
+            trace.outcome(outcome);
             let meaning = match status {
                 CommandStatus::Succeeded => "the car carried it out",
                 CommandStatus::Failed => "the car refused it",
