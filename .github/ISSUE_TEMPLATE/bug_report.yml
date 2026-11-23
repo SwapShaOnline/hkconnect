@@ -13,7 +13,7 @@ body:
         > and `00000000-0000-4000-8000-000000000001`.
 
         Security problems (for example a token leaking into logs) should be reported privately:
-        see [SECURITY.md](https://github.com/swapsha96/hkconnect/blob/main/SECURITY.md).
+        see [SECURITY.md](https://github.com/SwapShaOnline/hkconnect/blob/main/SECURITY.md).
   - type: input
     id: version
     attributes:

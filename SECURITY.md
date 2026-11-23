@@ -9,9 +9,9 @@ Please report vulnerabilities privately, not in a public issue, pull request
 or discussion.
 
 Use GitHub's private vulnerability reporting: go to the repository's
-[Security tab](https://github.com/swapsha96/hkconnect/security) and choose
+[Security tab](https://github.com/SwapShaOnline/hkconnect/security) and choose
 **Report a vulnerability**
-([direct link](https://github.com/swapsha96/hkconnect/security/advisories/new)).
+([direct link](https://github.com/SwapShaOnline/hkconnect/security/advisories/new)).
 
 Include what you found, how to reproduce it, the affected version, and the
 impact you expect. Do not include your own real credentials, tokens, VIN or

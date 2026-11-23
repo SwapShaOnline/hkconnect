@@ -35,7 +35,7 @@ It runs in two ways:
 With Rust 1.89 or newer:
 
 ```sh
-cargo install --git https://github.com/swapsha96/hkconnect hkc-mcp
+cargo install --git https://github.com/SwapShaOnline/hkconnect hkc-mcp
 ```
 
 or from a checkout: `cargo build --release -p hkc-mcp` (the binary is

@@ -103,5 +103,5 @@ Initial release.
   records both and checks them); and `hkc` keeps a single `session.json` per
   machine, so switching accounts or brands logs in again.
 
-[Unreleased]: https://github.com/swapsha96/hkconnect/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/swapsha96/hkconnect/releases/tag/v0.1.0
+[Unreleased]: https://github.com/SwapShaOnline/hkconnect/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/SwapShaOnline/hkconnect/releases/tag/v0.1.0

@@ -6,8 +6,8 @@ members = ["crates/hkconnect", "crates/hkc", "crates/hkc-mcp"]
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/swapsha96/hkconnect"
-homepage = "https://github.com/swapsha96/hkconnect"
+repository = "https://github.com/SwapShaOnline/hkconnect"
+homepage = "https://github.com/SwapShaOnline/hkconnect"
 authors = ["The hkconnect contributors"]
 
 [workspace.lints.rust]

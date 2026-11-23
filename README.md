@@ -3,7 +3,7 @@
 An unofficial async Rust client and command-line tool for Hyundai Bluelink
 India and Kia Connect India connected cars.
 
-[![CI](https://github.com/swapsha96/hkconnect/actions/workflows/ci.yml/badge.svg)](https://github.com/swapsha96/hkconnect/actions/workflows/ci.yml)
+[![CI](https://github.com/SwapShaOnline/hkconnect/actions/workflows/ci.yml/badge.svg)](https://github.com/SwapShaOnline/hkconnect/actions/workflows/ci.yml)
 [![hkconnect on crates.io](https://img.shields.io/crates/v/hkconnect.svg?label=hkconnect)](https://crates.io/crates/hkconnect)
 [![hkc on crates.io](https://img.shields.io/crates/v/hkc.svg?label=hkc)](https://crates.io/crates/hkc)
 [![docs.rs](https://img.shields.io/docsrs/hkconnect)](https://docs.rs/hkconnect)
@@ -50,7 +50,7 @@ cargo install hkc
 From source:
 
 ```sh
-git clone https://github.com/swapsha96/hkconnect
+git clone https://github.com/SwapShaOnline/hkconnect
 cd hkconnect
 cargo install --path crates/hkc
 ```
