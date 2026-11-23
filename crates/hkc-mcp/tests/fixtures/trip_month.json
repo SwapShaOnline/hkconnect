@@ -1,0 +1,67 @@
+{
+  "retCode": "S",
+  "resCode": "0000",
+  "resMsg": {
+    "tripPeriodType": 0,
+    "tripDayList": [
+      {
+        "tripDayInMonth": "20261109",
+        "tripCntDay": 4
+      },
+      {
+        "tripDayInMonth": "20261106",
+        "tripCntDay": 3
+      },
+      {
+        "tripDayInMonth": "20261114",
+        "tripCntDay": 3
+      },
+      {
+        "tripDayInMonth": "20261119",
+        "tripCntDay": 3
+      },
+      {
+        "tripDayInMonth": "20261118",
+        "tripCntDay": 4
+      },
+      {
+        "tripDayInMonth": "20261120",
+        "tripCntDay": 2
+      },
+      {
+        "tripDayInMonth": "20261110",
+        "tripCntDay": 1
+      },
+      {
+        "tripDayInMonth": "20261113",
+        "tripCntDay": 2
+      },
+      {
+        "tripDayInMonth": "20261108",
+        "tripCntDay": 4
+      },
+      {
+        "tripDayInMonth": "20261116",
+        "tripCntDay": 4
+      },
+      {
+        "tripDayInMonth": "20261123",
+        "tripCntDay": 1
+      },
+      {
+        "tripDayInMonth": "20261121",
+        "tripCntDay": 5
+      },
+      {
+        "tripDayInMonth": "20261117",
+        "tripCntDay": 2
+      }
+    ],
+    "tripDrvTime": 633,
+    "tripIdleTime": 81,
+    "tripDist": 486,
+    "tripAvgSpeed": 46.4,
+    "tripMaxSpeed": 131
+  },
+  "msgId": "deb805f0-e72e-11f1-988b-7d8d08321b02"
+}

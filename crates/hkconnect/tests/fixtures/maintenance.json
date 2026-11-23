@@ -1,0 +1,91 @@
+{
+  "retCode": "S",
+  "resCode": "0000",
+  "resMsg": {
+    "odometer": 42412,
+    "mainList": [
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Air Cleaner",
+        "enable": true,
+        "items": {
+          "distValue": 30000,
+          "termValue": 36
+        }
+      },
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Antimicrobial filter",
+        "enable": true,
+        "items": {
+          "distValue": 20000,
+          "termValue": 24
+        }
+      },
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Cooling water",
+        "enable": true,
+        "items": {
+          "distValue": 200000,
+          "termValue": 0
+        }
+      },
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Engine oil",
+        "enable": true,
+        "items": {
+          "distValue": 10000,
+          "termValue": 12
+        }
+      },
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Fuel filter",
+        "enable": true,
+        "items": {
+          "distValue": 60000,
+          "termValue": 72
+        }
+      },
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Ignition plug",
+        "enable": true,
+        "items": {
+          "distValue": 60000,
+          "termValue": 0
+        }
+      },
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Oil Filter",
+        "enable": true,
+        "items": {
+          "distValue": 10000,
+          "termValue": 12
+        }
+      },
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Tire position change",
+        "enable": true,
+        "items": {
+          "distValue": 10000,
+          "termValue": 12
+        }
+      },
+      {
+        "vinId": "MALTEST0000000001",
+        "itemId": "Wheel alignment",
+        "enable": true,
+        "items": {
+          "distValue": 10000,
+          "termValue": 12
+        }
+      }
+    ]
+  },
+  "msgId": "6a8299f0-e72b-11f1-9dfc-0d6c6b201a29"
+}

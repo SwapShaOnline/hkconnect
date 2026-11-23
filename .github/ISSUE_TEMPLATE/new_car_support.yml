@@ -1,0 +1,87 @@
+name: New car / endpoint support
+description: Report how hkc behaves on a car model we have not verified, or request support for an endpoint.
+labels: ["car support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!WARNING]
+        > **Redact personal data before submitting.** Remove your **email, VIN, vehicle id, tokens,
+        > PIN and any location or coordinates** from everything you paste, including `hkc -v` output
+        > and JSON responses.
+
+        Reports from other models help move commands from "experimental" to "verified". Successful
+        results are as useful as failures.
+  - type: input
+    id: version
+    attributes:
+      label: hkc / hkconnect version
+      placeholder: hkc 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: brand
+    attributes:
+      label: Brand
+      options:
+        - Hyundai (Bluelink India)
+        - Kia (Kia Connect India)
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model, year and variant
+      placeholder: Venue 2023, automatic
+    validations:
+      required: true
+  - type: dropdown
+    id: fuel
+    attributes:
+      label: Fuel type
+      options:
+        - Petrol
+        - Diesel
+        - CNG
+        - Hybrid
+        - Electric
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: ccs2
+    attributes:
+      label: Does hkc report that the car uses the CCS2 protocol?
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: What did you try, and what happened?
+      description: For each command (for example `hkc status`, `hkc info`, `hkc lock`), say whether it worked and whether the car acted.
+      placeholder: |
+        hkc status: works
+        hkc lock: car locked, reported success after ~20 s
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output with `-v` (redacted)
+      render: text
+  - type: textarea
+    id: endpoint
+    attributes:
+      label: Endpoint request (optional)
+      description: If you are asking for a new endpoint, describe what the official app does and, if you know them, the method and path. Do not paste tokens or personal data.
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Redaction check
+      options:
+        - label: I removed my email, VIN, vehicle id, tokens, PIN and any location data from this report.
+          required: true

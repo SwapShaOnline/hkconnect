@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent for `hkc-mcp serve` on a Mac that stays on.
+
+  Credentials and settings are read from
+  ~/Library/Application Support/hkconnect/.env (chmod 600), the same file
+  hkc uses; see docs/mcp.md. Replace YOUR_USER and the public URL below.
+
+  Install:
+    cp com.github.hkconnect.hkc-mcp.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.github.hkconnect.hkc-mcp.plist
+  Logs: /Users/YOUR_USER/Library/Logs/hkc-mcp.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.github.hkconnect.hkc-mcp</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOUR_USER/.cargo/bin/hkc-mcp</string>
+    <string>serve</string>
+    <string>--listen</string>
+    <string>127.0.0.1:8787</string>
+    <string>--public-url</string>
+    <string>https://car.example.com</string>
+    <string>--trust-proxy</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>Umask</key>
+  <integer>63</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USER/Library/Logs/hkc-mcp.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USER/Library/Logs/hkc-mcp.log</string>
+</dict>
+</plist>

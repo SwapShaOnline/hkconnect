@@ -1,0 +1,18 @@
+{
+  "retCode": "S",
+  "resCode": "0000",
+  "resMsg": {
+    "coord": {
+      "lat": 12.9715987,
+      "lon": 77.5945627,
+      "alt": 920,
+      "type": 0
+    },
+    "speed": {
+      "value": 0,
+      "unit": 0
+    },
+    "time": "20261123161131"
+  },
+  "msgId": "6ae134b0-e72b-11f1-9dfc-67e5c8e87ace"
+}

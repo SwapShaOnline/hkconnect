@@ -1,0 +1,31 @@
+{
+  "retCode": "S",
+  "resCode": "0000",
+  "resMsg": {
+    "vehicles": [
+      {
+        "vin": "MALTEST0000000001",
+        "vehicleId": "00000000-0000-4000-8000-000000000001",
+        "vehicleName": "Creta",
+        "type": "GN",
+        "tmuNum": "-",
+        "nickname": "Creta",
+        "year": "2024",
+        "master": true,
+        "carShare": 0,
+        "regDate": "2024-06-10 15:16:49.728",
+        "detailInfo": {
+          "inColor": "YJR",
+          "outColor": "SAW",
+          "saleCarmdlEnNm": "Creta",
+          "prodCarmdlCd": "FH",
+          "bodyType": "2",
+          "saleCarmdlCd": "FH"
+        },
+        "protocolType": 0,
+        "ccuCCS2ProtocolSupport": 0
+      }
+    ]
+  },
+  "msgId": "69cc6950-e72b-11f1-9dfc-66d3a80960d0"
+}

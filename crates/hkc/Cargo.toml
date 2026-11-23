@@ -1,0 +1,29 @@
+[package]
+name = "hkc"
+version = "0.1.0"
+description = "Command-line control for Hyundai/Kia connected cars in India"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords = ["hyundai", "kia", "bluelink", "car", "cli"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0.105"
+clap = { version = "4.6.9", features = ["derive", "env"] }
+directories = "6.0.0"
+hkconnect = { version = "0.1.0", path = "../hkconnect" }
+jiff = "1.0.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "signal"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[lints]
+workspace = true

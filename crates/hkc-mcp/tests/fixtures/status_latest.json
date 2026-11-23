@@ -1,0 +1,98 @@
+{
+  "retCode": "S",
+  "resCode": "0000",
+  "resMsg": {
+    "airCtrlOn": false,
+    "engine": false,
+    "doorLock": false,
+    "doorOpen": {
+      "frontLeft": 0,
+      "frontRight": 0,
+      "backLeft": 0,
+      "backRight": 0
+    },
+    "trunkOpen": false,
+    "airTemp": {
+      "value": "00H",
+      "unit": 0,
+      "hvacTempType": 1
+    },
+    "defrost": false,
+    "lowFuelLight": false,
+    "acc": false,
+    "ign3": false,
+    "hoodOpen": false,
+    "transCond": true,
+    "steerWheelHeat": 0,
+    "sideBackWindowHeat": 0,
+    "dte": {
+      "value": 455,
+      "unit": 1
+    },
+    "tirePressureLamp": {
+      "tirePressureLampAll": 0,
+      "tirePressureLampFL": 0,
+      "tirePressureLampFR": 0,
+      "tirePressureLampRL": 0,
+      "tirePressureLampRR": 0
+    },
+    "seatHeaterVentState": {
+      "drvSeatHeatState": 2,
+      "astSeatHeatState": 2,
+      "rlSeatHeatState": 2,
+      "rrSeatHeatState": 2
+    },
+    "battery": {
+      "batState": 1,
+      "sjbDeliveryMode": 1,
+      "batSignalReferenceValue": {
+        "batWarning": 0
+      },
+      "powerAutoCutMode": 2
+    },
+    "sunroofOpen": false,
+    "lampWireStatus": {
+      "stopLamp": {
+        "stopLampStatus": false,
+        "leftLamp": false,
+        "rightLamp": false
+      },
+      "headLamp": {
+        "headLampStatus": false,
+        "leftLowLamp": false,
+        "rightLowLamp": false,
+        "leftHighLamp": false,
+        "rightHighLamp": false,
+        "leftBifuncLamp": false,
+        "rightBifuncLamp": false
+      },
+      "turnSignalLamp": {
+        "turnSignalLampStatus": false,
+        "leftFrontLamp": false,
+        "rightFrontLamp": false,
+        "leftRearLamp": false,
+        "rightRearLamp": false
+      }
+    },
+    "smartKeyBatteryWarning": false,
+    "fuelLevel": 63,
+    "washerFluidStatus": false,
+    "breakOilStatus": false,
+    "engineOilStatus": false,
+    "sleepModeCheck": false,
+    "vehicleMovementHis": false,
+    "vehicleSlope": false,
+    "neutralPosition": false,
+    "parkingBrakeHighNotch": false,
+    "time": "20261123161134",
+    "tailLampStatus": 0,
+    "hazardStatus": 0,
+    "airCleaning": {
+      "airPurifierStatus": 1,
+      "fineDustLevel": [],
+      "fineDustColor": 0,
+      "fineDustLevel2": []
+    }
+  },
+  "msgId": "6a281de0-e72b-11f1-988b-2758f5de3def"
+}

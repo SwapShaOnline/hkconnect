@@ -1,0 +1,157 @@
+{
+  "retCode": "S",
+  "resCode": "0000",
+  "resMsg": {
+    "vinInfo": [
+      {
+        "basic": {
+          "modelName": "Creta",
+          "modelYear": "2024",
+          "modelType": "GN",
+          "brand": "H",
+          "transmission": "AT",
+          "privateModeInfo": "false",
+          "protocolType": 0,
+          "ccuCCS2ProtocolSupport": 0,
+          "simStartDate": "20240529",
+          "simEndDate": "20290529",
+          "fuelType": "1",
+          "vin": "MALTEST0000000001"
+        },
+        "device": {
+          "deviceModemInfo": "true",
+          "simStatus": "A",
+          "headUnitType": "AVN",
+          "nadid": "0000000000000000000",
+          "telecom": "VODAFONE",
+          "compPeriodEndYn": "N",
+          "webManualUrl": "http://webmanual.hyundai.com/STD_GEN5_WIDE/AVNT/IND/English/index.html",
+          "simStartDate": "20240529",
+          "simEndDate": "20290529",
+          "adv-dec": "1"
+        },
+        "option": {
+          "drvSeatLoc": "R",
+          "remoteControl": "1",
+          "heating1": "1",
+          "hvacTempType": "1",
+          "remoteControlWaitingTime": "120",
+          "airControlType": "1",
+          "remoteAirCtrlControlOption": 1,
+          "svmOptionInfo": 1,
+          "batteryPreconditioningOption": 0,
+          "airPurifierOption": 0,
+          "fineDustOption": 1,
+          "evAlarmOptionInfo": 0,
+          "digitalKey2": 0,
+          "seatHeaterVent": {
+            "drvSeatHeat": 4,
+            "astSeatHeat": 4,
+            "rlSeatHeat": 0,
+            "rrSeatHeat": 0
+          },
+          "airPurifier": "N",
+          "seatVentilation": "Y",
+          "heatingSteeringWheel": "0",
+          "heatingSideMirror": "0",
+          "heatingRearWindow": "1",
+          "heatingFrontWindow": "0",
+          "remoteHeatControl": "0",
+          "hornLightAvailable": 1,
+          "lightOnlyAvailable": 1
+        },
+        "serviceOption": {
+          "engineIdleTimeNotification": 0,
+          "valetServiceOption": 1,
+          "finalDestinationNoti": 1,
+          "scheduleLinkService": 1,
+          "batteryWarningService": null,
+          "centerUserProfileOption": 2,
+          "remoteValetActOption": 1,
+          "idleAlertSettingService": null,
+          "vssxSupport": 1,
+          "calendarOption": ""
+        },
+        "detailInfo": {
+          "inColor": "YJR",
+          "outColor": "SAW",
+          "saleCarmdlEnNm": "Creta",
+          "prodCarmdlCd": "FH",
+          "bodyType": "2",
+          "saleCarmdlCd": "FH"
+        },
+        "dtcCategory": [
+          {
+            "ecuId": "BMS",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "ADAS_DRV",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "ABS",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "TPMS",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "ESC",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "EMS",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "MCU",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "RRC",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "TCU",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "SCC",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "ACU",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "ICU",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "ADAS_PRK",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "MDPS",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "VCU",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "EPB",
+            "factoryValue": 1
+          },
+          {
+            "ecuId": "LKAS",
+            "factoryValue": 1
+          }
+        ]
+      }
+    ]
+  },
+  "msgId": "6bb68610-e72b-11f1-988b-7f9fc35c351e"
+}

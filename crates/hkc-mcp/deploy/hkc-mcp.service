@@ -1,0 +1,47 @@
+# systemd unit for `hkc-mcp serve` behind a reverse proxy or tunnel.
+#
+# 1. Install the binary to /usr/local/bin/hkc-mcp.
+# 2. Create a user:   sudo useradd --system --create-home --home-dir /var/lib/hkc-mcp hkc
+# 3. Put settings in /etc/hkc-mcp.env (owner root, mode 0600; see docs/mcp.md).
+#    systemd reads values literally unless they are quoted; don't use `$`
+#    inside an unquoted value.
+# 4. Set the password:
+#    sudo -u hkc HKC_MCP_DATA_DIR=/var/lib/hkc-mcp hkc-mcp set-password
+# 5. sudo cp hkc-mcp.service /etc/systemd/system/ && sudo systemctl enable --now hkc-mcp
+
+[Unit]
+Description=hkc-mcp: MCP server for a Hyundai/Kia (India) car
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=hkc
+Group=hkc
+EnvironmentFile=/etc/hkc-mcp.env
+Environment=HKC_MCP_DATA_DIR=/var/lib/hkc-mcp
+Environment=HKC_MCP_LISTEN=127.0.0.1:8787
+ExecStart=/usr/local/bin/hkc-mcp serve
+Restart=on-failure
+RestartSec=10
+UMask=0077
+
+# Hardening.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/hkc-mcp
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
