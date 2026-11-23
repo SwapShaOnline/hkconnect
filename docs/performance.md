@@ -1,7 +1,7 @@
 # Performance
 
 Measured 2026-11-23 on a 2024 Hyundai Creta (Bluelink India, older non-CCS2
-protocol) from Raipur, over home broadband, on an Apple Silicon MacBook
+protocol) in India, over home broadband, on an Apple Silicon MacBook
 (8 GB). Hyundai's servers dominate every number; expect variation by time of
 day and network.
 

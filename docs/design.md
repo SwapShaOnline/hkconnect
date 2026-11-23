@@ -37,7 +37,8 @@ laptop running.
   config struct) but we don't build them.
 - EV charging features and schedules (no EV to verify against).
 - Newer CCS2 cars (different status format; no car to verify against).
-- The MCP server and hosting (next phase, separate crate).
+- Hosting the MCP server (the server itself is built: `crates/hkc-mcp`, see
+  [mcp-design.md](mcp-design.md) and [mcp.md](mcp.md)).
 
 ## Anti-goals
 
@@ -59,7 +60,7 @@ laptop running.
 
 Base: `https://prd.in-ccapi.{hyundai|kia}.connected-car.io:8080`
 
-Login (≈3.5 s total):
+Login (≈0.3 s with a reused connection; see [performance.md](performance.md)):
 1. `POST /api/v1/spa/notifications/register` → `deviceId`. Needs a `Stamp`
    header: base64(CFB XOR "{APP_ID}:{unix_seconds}").
 2. `GET /api/v1/user/oauth2/authorize?...` → session cookie.
@@ -71,7 +72,7 @@ Login (≈3.5 s total):
 6. Control token (PIN): `PUT /api/v1/user/pin?token= {deviceId,pin}` →
    `controlToken`, `expiresTime`. Used by some commands.
 
-Reads (≈0.3–0.6 s each): `/spa/vehicles`, `/vehicles/{id}/status/latest`
+Reads (≈0.07–0.35 s each, see performance.md): `/spa/vehicles`, `/vehicles/{id}/status/latest`
 (cached), `/vehicles/{id}/status` (force refresh — wakes the car),
 `/vehicles/{id}/location/park`, `/vehicles/{id}/profile` (capabilities),
 `/vehicles/{id}/setting/alert/maintenance` (odometer + service intervals),
@@ -126,6 +127,7 @@ crates/
     client.rs       Client: high-level async API
     error.rs        thiserror enum
   hkc/              CLI binary (clap)
+  hkc-mcp/          MCP server for Claude (rmcp; stdio + OAuth HTTP)
 tests/fixtures/     scrubbed real responses
 ```
 

@@ -150,7 +150,7 @@ After the first login, `hkc` saves the session (access and refresh tokens,
 no password) as `session.json` in the OS data directory
 (`~/Library/Application Support/hkconnect/` on macOS,
 `~/.local/share/hkconnect/` on Linux) with owner-only (0600) permissions,
-so later commands skip the roughly 4 s login. `hkc logout` deletes it. If
+so later commands skip logging in again. `hkc logout` deletes it. If
 the session cannot be saved, `hkc` prints a warning but keeps the command's
 own result and exit code.
 

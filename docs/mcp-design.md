@@ -3,7 +3,9 @@
 An MCP server that lets Claude (web, desktop, and the mobile apps) read and
 control a Hyundai/Kia (India) car through the `hkconnect` library.
 
-Status: design, not yet built. Hosting location is an open decision (below).
+Status: built and released as `hkc-mcp` (see [mcp.md](mcp.md) for setup).
+This document records the original design; where the implementation differs,
+mcp.md and the code are authoritative.
 
 ## Why
 

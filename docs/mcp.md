@@ -13,8 +13,9 @@ It runs in two ways:
 | `hkc-mcp serve` | claude.ai custom connector, which also works in the Claude mobile apps | OAuth with a password only you know |
 
 > **Read this first.** This is unofficial software using the same servers as
-> the official app, with your account. Remote commands act on a real car and
-> have not yet been verified on one. Anyone who can call the server's
+> the official app, with your account. Remote commands act on a real car;
+> only lock has been verified on one so far (see the README's support
+> table). Anyone who can call the server's
 > command tools can do what the tools allow, so keep the password strong,
 > keep unlock and remote start off unless you need them, and set them to
 > "Needs approval" in Claude.
@@ -32,13 +33,26 @@ It runs in two ways:
 
 ## 1. Install
 
-With Rust 1.89 or newer:
+Homebrew (macOS, Linux):
 
 ```sh
-cargo install --git https://github.com/SwapShaOnline/hkconnect hkc-mcp
+brew install SwapShaOnline/tap/hkc-mcp
 ```
 
-or from a checkout: `cargo build --release -p hkc-mcp` (the binary is
+Installer script (macOS, Linux):
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/SwapShaOnline/hkconnect/releases/latest/download/hkc-mcp-installer.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/SwapShaOnline/hkconnect/releases/latest/download/hkc-mcp-installer.ps1 | iex"
+```
+
+With Rust 1.89 or newer: `cargo binstall hkc-mcp` (prebuilt) or
+`cargo install hkc-mcp` (from source), or from a checkout: `cargo build --release -p hkc-mcp` (the binary is
 `target/release/hkc-mcp`). A container image can be built with
 `crates/hkc-mcp/deploy/Dockerfile` (see [Docker](#docker)).
 
@@ -137,7 +151,9 @@ No network port and no password are involved: Claude starts `hkc-mcp stdio`
 as a child process.
 
 **Claude Desktop**: Settings → Developer → Edit Config, then add to
-`claude_desktop_config.json` (use the full path to the binary):
+`claude_desktop_config.json` (use the full path to the binary; `which hkc-mcp`
+prints it: typically `/opt/homebrew/bin/hkc-mcp` with Homebrew on Apple
+Silicon, `~/.cargo/bin/hkc-mcp` with the installer script or Cargo):
 
 ```json
 {
@@ -157,7 +173,7 @@ the Bluelink password in this file. Restart Claude Desktop.
 **Claude Code**:
 
 ```sh
-claude mcp add car -- /Users/you/.cargo/bin/hkc-mcp stdio
+claude mcp add car -- "$(which hkc-mcp)" stdio
 ```
 
 ## 5. Remote use: claude.ai and the mobile apps
