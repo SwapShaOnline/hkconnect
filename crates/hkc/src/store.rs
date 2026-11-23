@@ -364,7 +364,7 @@ mod tests {
             .filter_map(|e| e.ok()?.file_name().into_string().ok())
             .filter(|n| n.starts_with(".session-"))
             .collect();
-        assert!(leftovers.is_empty(), "{leftovers:?}");
+        assert_eq!(leftovers.len(), 0, "{leftovers:?}");
     }
 
     #[cfg(unix)]
@@ -411,7 +411,7 @@ mod tests {
              G=\n\
              H=a=b\n",
         );
-        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(problems.len(), 0, "{problems:?}");
         assert_eq!(vars["HKC_PASSWORD"], "pa$word1");
         assert_eq!(vars["A"], "pa$word1 #not a comment");
         assert_eq!(vars["B"], "${HOME}\\n");
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn env_comments_and_blank_lines_are_skipped() {
         let (vars, problems) = parsed("# HKC_PIN=1111\n\n   \n  # indented\nHKC_PIN=2222\n");
-        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(problems.len(), 0, "{problems:?}");
         assert_eq!(vars.len(), 1);
         assert_eq!(vars["HKC_PIN"], "2222");
     }
@@ -476,7 +476,7 @@ mod tests {
     fn load_env_reads_the_config_directory() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::at(dir.path());
-        assert!(store.load_env().0.is_empty());
+        assert_eq!(store.load_env().0.len(), 0);
         std::fs::write(dir.path().join(".env"), "HKC_PASSWORD='pa$word1'\n").unwrap();
         assert_eq!(store.load_env().0["HKC_PASSWORD"], "pa$word1");
     }

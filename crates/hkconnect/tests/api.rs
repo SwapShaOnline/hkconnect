@@ -1662,7 +1662,7 @@ async fn hostile_vehicle_ids_never_reach_the_server() {
             assert!(!err.may_have_been_received());
         }
     }
-    assert!(server.received_requests().await.unwrap().is_empty());
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
 }
 
 // ----- more leniency -----
@@ -1736,12 +1736,12 @@ async fn null_or_string_payloads_read_as_empty() {
     assert_eq!(client.location(&car).await.unwrap(), None);
 
     let month = client.trips_in_month(&car, 2026, 11).await.unwrap();
-    assert!(month.days.is_empty());
+    assert_eq!(month.days.len(), 0);
     let day = client
         .trips_on_day(&car, jiff::civil::date(2026, 11, 17))
         .await
         .unwrap();
-    assert!(day.trips.is_empty());
+    assert_eq!(day.trips.len(), 0);
 
     let trip: hkconnect::Trip = serde_json::from_value(json!({
         "id": "1", "started_at": null, "ended_at": null, "start": null, "end": null,
@@ -1750,7 +1750,8 @@ async fn null_or_string_payloads_read_as_empty() {
     .unwrap();
     for _ in 0..3 {
         let detail = client.trip_detail(&car, &trip).await.unwrap();
-        assert!(detail.route.is_empty() && detail.started_at.is_none());
+        assert_eq!(detail.route.len(), 0);
+        assert!(detail.started_at.is_none());
     }
 }
 
