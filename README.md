@@ -45,11 +45,47 @@ are welcome: open an issue with the "New car / endpoint support" form.
 
 ## Install
 
+Prebuilt binaries of `hkc` (the CLI) and `hkc-mcp` (the MCP server) are
+published on [GitHub Releases](https://github.com/SwapShaOnline/hkconnect/releases)
+for macOS (Apple silicon and Intel), Linux (x86_64 and arm64, glibc) and
+Windows (x86_64). Pick one of:
+
+**Homebrew** (macOS, Linux):
+
 ```sh
-cargo install hkc
+brew install SwapShaOnline/tap/hkc
+brew install SwapShaOnline/tap/hkc-mcp
 ```
 
-From source:
+**Shell installer** (macOS, Linux):
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/SwapShaOnline/hkconnect/releases/latest/download/hkc-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/SwapShaOnline/hkconnect/releases/latest/download/hkc-mcp-installer.sh | sh
+```
+
+**PowerShell installer** (Windows):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/SwapShaOnline/hkconnect/releases/latest/download/hkc-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/SwapShaOnline/hkconnect/releases/latest/download/hkc-mcp-installer.ps1 | iex"
+```
+
+**cargo-binstall** (downloads the prebuilt binary):
+
+```sh
+cargo binstall hkc
+cargo binstall hkc-mcp
+```
+
+**From crates.io** (builds from source; needs Rust 1.89 or later):
+
+```sh
+cargo install hkc
+cargo install hkc-mcp
+```
+
+From a git checkout:
 
 ```sh
 git clone https://github.com/SwapShaOnline/hkconnect

@@ -9,6 +9,13 @@ library and the `hkc` CLI are versioned together.
 
 ## [Unreleased]
 
+### Added
+
+- Prebuilt `hkc` and `hkc-mcp` binaries for macOS, Linux and Windows on
+  GitHub Releases, with shell and PowerShell installers, a Homebrew tap
+  (`brew install SwapShaOnline/tap/hkc`) and `cargo binstall` support.
+  Releases, including crates.io publishing, now run from a version tag.
+
 ## [0.1.0] - 2026-11-23
 
 Verified live on a 2024 Hyundai Creta: all reads, and lock (car confirmed in about 30 s). `hkc bench` measures API latency; results are in docs/performance.md.

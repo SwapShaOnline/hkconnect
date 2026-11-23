@@ -1,6 +1,6 @@
 [package]
 name = "hkc-mcp"
-version = "0.1.0"
+version.workspace = true
 description = "MCP server that lets Claude read and control a Hyundai/Kia (India) connected car"
 edition.workspace = true
 rust-version.workspace = true
@@ -42,6 +42,17 @@ rmcp = { version = "3.11.0", default-features = false, features = ["client", "se
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "test-util"] }
 tower = { version = "0.5.3", features = ["util"] }
 wiremock = "0.6.5"
+
+# Lets `cargo binstall hkc-mcp` download the archives that dist attaches to
+# each GitHub Release.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }{ archive-suffix }"
+bin-dir = "{ name }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "txz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+bin-dir = "{ bin }{ binary-ext }"
 
 [lints]
 workspace = true

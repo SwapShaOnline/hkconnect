@@ -1,6 +1,6 @@
 [package]
 name = "hkconnect"
-version = "0.1.0"
+version.workspace = true
 description = "Async client for Hyundai Bluelink India and Kia Connect India"
 edition.workspace = true
 rust-version.workspace = true
