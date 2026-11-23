@@ -1,11 +1,12 @@
 # hkconnect
 
-An unofficial async Rust client and command-line tool for Hyundai Bluelink
-India and Kia Connect India connected cars.
+An unofficial async Rust client, command-line tool and Claude (MCP) server for
+Hyundai Bluelink India and Kia Connect India connected cars.
 
 [![CI](https://github.com/SwapShaOnline/hkconnect/actions/workflows/ci.yml/badge.svg)](https://github.com/SwapShaOnline/hkconnect/actions/workflows/ci.yml)
-[![hkconnect on crates.io](https://img.shields.io/crates/v/hkconnect.svg?label=hkconnect)](https://crates.io/crates/hkconnect)
-[![hkc on crates.io](https://img.shields.io/crates/v/hkc.svg?label=hkc)](https://crates.io/crates/hkc)
+[![hkconnect on crates.io](https://img.shields.io/crates/v/hkconnect?label=hkconnect)](https://crates.io/crates/hkconnect)
+[![hkc on crates.io](https://img.shields.io/crates/v/hkc?label=hkc)](https://crates.io/crates/hkc)
+[![hkc-mcp on crates.io](https://img.shields.io/crates/v/hkc-mcp?label=hkc-mcp)](https://crates.io/crates/hkc-mcp)
 [![docs.rs](https://img.shields.io/docsrs/hkconnect)](https://docs.rs/hkconnect)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![MSRV 1.89](https://img.shields.io/badge/MSRV-1.89-orange.svg)](#minimum-supported-rust-version)
@@ -14,6 +15,7 @@ India and Kia Connect India connected cars.
 |---|---|
 | [`hkconnect`](crates/hkconnect) | Async library: login, session reuse, typed reads, remote commands |
 | [`hkc`](crates/hkc) | Command-line app built on the library |
+| [`hkc-mcp`](crates/hkc-mcp) | MCP server so Claude can read and control the car ([setup guide](docs/mcp.md)) |
 
 > **Disclaimer.** This project is not affiliated with, endorsed by, or
 > supported by Hyundai Motor Company, Kia Corporation, or their Indian
