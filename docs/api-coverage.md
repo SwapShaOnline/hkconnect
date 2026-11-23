@@ -66,7 +66,7 @@ command results endpoint, usually after 10 to 40 seconds.
 
 | Capability | Method and path | Auth | hkconnect status | Notes |
 |---|---|---|---|---|
-| Lock / unlock (non-CCS2) | `POST v1/vehicles/{id}/control/door` | Access token | Implemented, unverified | `{action: "close" \| "open", deviceId}`. `Client::lock`, `Client::unlock`, `hkc lock`, `hkc unlock`. |
+| Lock / unlock (non-CCS2) | `POST v1/vehicles/{id}/control/door` | Access token | Lock: implemented, verified (2024 Creta, 2026-11-23). Unlock: implemented, unverified | `{action: "close" \| "open", deviceId}`. `Client::lock`, `Client::unlock`, `hkc lock`, `hkc unlock`. |
 | Lock / unlock (CCS2) | `POST v2/vehicles/{id}/ccs2/control/door` | Control token | Not implemented | hkconnect rejects every command for CCS2 cars with a clear error. |
 | Remote start with climate | `POST v1/vehicles/{id}/control/engine` | Access token | Implemented, unverified | `{action: "start", hvacType: 1, options: {defrost, heating1, igniOnDuration}, tempCode, unit: "C"}`. 14 to 29.5 °C in 0.5 steps (`tempCode` is the step index in hex plus `H`), 1 to 10 minutes. `Client::start_climate`, `hkc start`. |
 | Stop remote start | `POST v2/vehicles/{id}/control/engine` | Control token | Implemented, unverified | `{action: "stop"}`. `Client::stop_climate`, `hkc stop`. Whether the control token is required on non-CCS2 cars is unconfirmed. |
