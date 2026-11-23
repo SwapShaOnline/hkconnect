@@ -14,3 +14,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # The ref (e.g. @1.89) selects the Rust toolchain for the MSRV job,
+      # not a version of the action, so "upgrades" would break that check.
+      - dependency-name: dtolnay/rust-toolchain

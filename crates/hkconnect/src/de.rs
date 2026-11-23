@@ -181,9 +181,9 @@ mod tests {
         let parse = |v: Value| serde_json::from_value::<List>(v).unwrap().items;
         let items = parse(json!({ "items": [{ "n": 1 }, "junk", { "n": null }, { "n": 2 }] }));
         assert_eq!(items, [Item { n: 1 }, Item { n: 2 }]);
-        assert!(parse(json!({ "items": null })).is_empty());
-        assert!(parse(json!({ "items": { "n": 1 } })).is_empty());
-        assert!(parse(json!({})).is_empty());
+        assert_eq!(parse(json!({ "items": null })).len(), 0);
+        assert_eq!(parse(json!({ "items": { "n": 1 } })).len(), 0);
+        assert_eq!(parse(json!({})).len(), 0);
     }
 
     #[test]

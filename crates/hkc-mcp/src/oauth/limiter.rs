@@ -317,7 +317,7 @@ mod tests {
         let mut l = Limiter::default();
         let r = l.reserve(ip("192.0.2.1"), now).unwrap();
         l.success(r);
-        assert!(l.global.is_empty());
+        assert_eq!(l.global.len(), 0);
     }
 
     #[test]
