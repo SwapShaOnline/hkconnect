@@ -117,10 +117,19 @@ How the tools behave:
 - **Several cars.** Every tool takes an optional `vehicle` (name, VIN or id).
   With several cars and no `vehicle` (and no `HKC_VEHICLE`), the tool
   returns the list to choose from.
-- **Audit log.** Every command, and every car-waking refresh, is appended to
-  `mcp-audit.jsonl` in the data directory (mode 0600): time, tool,
-  arguments, the OAuth client id (or `stdio`), the car's VIN, the command id
-  and the outcome. Passwords, PINs and tokens are never written.
+- **Audit log.** Every tool call, reads included (status, location, trips,
+  ...), is appended to `mcp-audit.jsonl` in the data directory (mode 0600):
+  time, tool, arguments, the OAuth client id (or `stdio`), the car's VIN,
+  the command id (for commands and `check_command`) and the outcome
+  (`succeeded`, `failed`, `pending`, `not_sent`, ...; for reads `ok`,
+  `cached`, `refreshed`, `refresh_skipped` or `error`). Results are never
+  written, so the car's coordinates and routes are not in the log (the
+  arguments of `send_destination` are, since you chose them). Passwords,
+  PINs and tokens are never written.
+- **Data from Hyundai's servers.** Tool results contain text that comes
+  from Bluelink / Kia Connect (car names, error messages). Control and
+  bidirectional-override characters are removed from it, but it is still
+  someone else's text: treat it as data, not as instructions.
 
 ## 4. Local use: Claude Desktop and Claude Code
 
@@ -181,13 +190,19 @@ hkc-mcp serve --listen 127.0.0.1:8787 --public-url https://car.example.com --tru
   `https://car.example.com/mcp`. It must match exactly what you enter in
   Claude, and requests must arrive with that `Host` header (both proxies
   below pass it through).
-- `--trust-proxy` makes sign-in rate limiting use the client address from
-  the last `X-Forwarded-For` entry. Use it **only** when every request comes
-  through a proxy that sets that header (both setups below do); without a
-  proxy, anyone could forge it.
+- `--trust-proxy` makes rate limiting use the client address from the last
+  `X-Forwarded-For` entry, but only for connections that come from
+  loopback (a proxy or tunnel on the same machine, as in both setups
+  below). A connection from anywhere else is limited by its own address,
+  whatever header it sends, so the header can't be forged from outside.
+  If your proxy connects from another address (another machine, or the
+  Docker bridge; see [Docker](#docker)), list it with
+  `--trusted-proxies 172.17.0.1` (comma-separated addresses or CIDR
+  networks; implies `--trust-proxy`). Keep that list as narrow as you can:
+  anything on it can choose the address the limits apply to.
 - Every option also has an environment variable (`HKC_MCP_LISTEN`,
-  `HKC_MCP_PUBLIC_URL`, `HKC_MCP_TRUST_PROXY=true`); see the
-  [reference](#8-reference).
+  `HKC_MCP_PUBLIC_URL`, `HKC_MCP_TRUST_PROXY=true`,
+  `HKC_MCP_TRUSTED_PROXIES`); see the [reference](#8-reference).
 
 Choose one of the following.
 
@@ -256,10 +271,23 @@ docker run -d --name hkc-mcp --restart unless-stopped \
 ```
 
 `hkc-mcp.env` holds `HKC_USERNAME`, `HKC_PASSWORD`, `HKC_PIN`,
-`HKC_MCP_PUBLIC_URL=https://car.example.com`, `HKC_MCP_TRUST_PROXY=true` and
-any tool settings (keep it mode 0600). Inside the container the server
-listens on `0.0.0.0:8787`; publish it only on `127.0.0.1` and put the tunnel
-or proxy in front.
+`HKC_MCP_PUBLIC_URL=https://car.example.com`, `HKC_MCP_ALLOWED_CLIENTS` (see
+[section 6](#6-add-the-connector-in-claude)) and any tool settings (keep it
+mode 0600).
+
+Inside the container the server has to listen on `0.0.0.0:8787`. Always
+publish it **only on the host's loopback**, `-p 127.0.0.1:8787:8787` as
+above, and put the tunnel or proxy (on the host) in front. Never use
+`-p 8787:8787`: that serves plain HTTP to your whole network.
+
+Seen from inside the container, the host's proxy connects from the Docker
+bridge gateway, not from loopback, so `X-Forwarded-For` is ignored by
+default and every visitor shares one rate-limit address (safe, but an
+attacker's wrong passwords then also delay yours). To have per-visitor
+limits, find the gateway (`docker network inspect bridge -f
+'{{(index .IPAM.Config 0).Gateway}}'`, usually `172.17.0.1`) and add
+`HKC_MCP_TRUSTED_PROXIES=172.17.0.1` to `hkc-mcp.env`. Don't list a whole
+range other containers or hosts can connect from.
 
 ### 5.3 Check it from outside
 
@@ -281,9 +309,14 @@ should show `"resource": "https://car.example.com/mcp"`.
 1. On claude.ai: **Settings → Connectors → Add custom connector**.
 2. Name: anything, e.g. "Car". URL: `https://car.example.com/mcp`. Leave the
    OAuth client fields empty.
-3. Click **Connect**. A page on your server asks for the `hkc-mcp` password
-   and shows who is asking and where your browser will return; it should be
-   a `claude.ai` address. Enter the password and allow.
+3. Click **Connect**. A page on your server asks for the `hkc-mcp` password.
+   It shows, in large type, **the address the app comes from** (the host of
+   its client id URL) and **where your browser will return**; both should
+   be Claude's addresses (`claude.ai` or `claude.com`). The name the app
+   gives itself is shown only as "calls itself …": any app can choose any
+   name, so don't go by it. If the two addresses differ, the page says so
+   in red; unless you expected exactly that, close the page. Enter the
+   password and allow.
 4. In the connector's settings, set the tool permissions:
    - read tools: "Always allow" is reasonable;
    - `lock`, `stop_climate`, `send_destination`: your choice;
@@ -297,15 +330,19 @@ To allow `unlock` or remote start later: add them to `HKC_MCP_ENABLE`,
 restart `hkc-mcp`, then in Claude refresh or reconnect the connector so it
 sees the new tools, and set them to "Needs approval".
 
-**Optional: allow only Claude.** By default any MCP client that the owner
-signs in can connect. Claude identifies itself with a client id URL (a
-Client ID Metadata Document). After your first successful connection, find
-it in the server log (`sign-in page shown client_id=…`) and restrict the
-server to it:
+**Strongly recommended: allow only Claude.** By default any MCP client
+can show you a sign-in page, so a phishing link could ask for your password
+on your own server on behalf of someone else's app (the page shows that
+app's address, but it's easy to miss). Claude identifies itself with a
+client id URL (a Client ID Metadata Document). Right after your first
+successful connection, find it in the server log (`sign-in page shown
+client_id=…`) and restrict the server to it, then restart:
 
 ```sh
 HKC_MCP_ALLOWED_CLIENTS=<the client id from the log>
 ```
+
+Until you do, `hkc-mcp serve` prints a warning at startup.
 
 **Dynamic client registration** (`--allow-dcr` / `HKC_MCP_ALLOW_DCR=true`)
 is off by default. Turn it on only for a client that can't use a client id
@@ -324,8 +361,10 @@ Both work while the server runs (they edit the state file it reads on every
 request). Also remove the connector in Claude if you no longer use it.
 
 If you suspect someone else has your sign-in password: run `set-password`,
-check `mcp-audit.jsonl` for commands you didn't make, and change your
-Bluelink password and PIN in the official app too.
+check `mcp-audit.jsonl` for calls you didn't make (it lists every tool call,
+including reads of the car's location and trips, with the client id that
+made it), and change your Bluelink password and PIN in the official app
+too.
 
 ## 8. Reference
 
@@ -334,7 +373,7 @@ Bluelink password and PIN in the official app too.
 ```
 hkc-mcp stdio                                   # MCP over stdin/stdout
 hkc-mcp serve --public-url URL [--listen ADDR] [--trust-proxy]
-              [--allow-dcr] [--allowed-clients IDS]
+              [--trusted-proxies CIDRS] [--allow-dcr] [--allowed-clients IDS]
 hkc-mcp set-password [--password-stdin] [--keep-tokens]
 hkc-mcp revoke-all [--clients]
 ```
@@ -358,9 +397,10 @@ A flag wins over the environment, which wins over the `.env` file.
 | `HKC_MCP_DATA_DIR` | platform data dir | Session, OAuth state, audit log |
 | `HKC_MCP_LISTEN` | `127.0.0.1:8787` | `serve`: listen address |
 | `HKC_MCP_PUBLIC_URL` | (required for `serve`) | Public https origin |
-| `HKC_MCP_TRUST_PROXY` | `false` | Use `X-Forwarded-For` for rate limiting |
+| `HKC_MCP_TRUST_PROXY` | `false` | Use `X-Forwarded-For` (from loopback peers) for rate limiting |
+| `HKC_MCP_TRUSTED_PROXIES` | none | More peers whose `X-Forwarded-For` is believed (addresses/CIDRs); implies `HKC_MCP_TRUST_PROXY` |
 | `HKC_MCP_ALLOW_DCR` | `false` | Enable `/register` |
-| `HKC_MCP_ALLOWED_CLIENTS` | any | Only these OAuth client ids |
+| `HKC_MCP_ALLOWED_CLIENTS` | any (warning at startup) | Only these OAuth client ids; strongly recommended |
 | `RUST_LOG` | `hkc_mcp=info,warn` | Log filter (logs go to stderr) |
 
 ### Files (in the data directory)
@@ -369,7 +409,8 @@ A flag wins over the environment, which wins over the `.env` file.
 |---|---|
 | `mcp-session.json` | Bluelink login session (tokens) |
 | `mcp-oauth.json` | Sign-in password hash, SHA-256 hashes of issued tokens, registered clients |
-| `mcp-audit.jsonl` | One JSON line per command |
+| `mcp-oauth.json.lock` | Empty; locked while the server or a subcommand changes `mcp-oauth.json` |
+| `mcp-audit.jsonl` | One JSON line per tool call |
 
 All are created owner-only (0600) in an owner-only directory. Data
 directory: `~/Library/Application Support/hkconnect/` on macOS,
@@ -386,11 +427,31 @@ directory: `~/Library/Application Support/hkconnect/` on macOS,
   `https://<host>/mcp`.
 - **Sign-in page.** One password field, Argon2id hash, CSRF token bound to a
   cookie, no framing, no caching. Wrong passwords are limited per address
-  (3 free, then 5 s doubling to 15 min) and globally (30 per hour), checked
-  before any hashing. A determined attacker can therefore lock you out of
-  signing in for up to an hour; restarting the server clears the limits.
+  (3 free, then 5 s doubling to 15 min), per sign-in page (5) and globally
+  (30 per hour). Each attempt is counted *before* its password is hashed
+  (and given back if it was right), so sending many at once doesn't get
+  more guesses, and at most 2 hashes run at a time (further attempts get
+  "busy, try again" immediately), which bounds memory use. A determined
+  attacker can therefore lock you out of signing in for up to an hour.
+  The limits are kept in memory: restarting the server clears them (an
+  attacker can't restart it, but keep that in mind before restarting
+  during an attack).
+- **Other limits.** Failed `/token` requests are limited per address (10
+  free, then 1 s doubling to 5 min; no global limit, so nobody can lock
+  out your refreshes), and an invalid token never rewrites the state file.
+  One address can keep at most 3 sign-in pages open (opening more discards
+  its own oldest, never someone else's), and may make the server fetch at
+  most 10 new client metadata documents per 10 minutes (60 overall, 4 at
+  once).
 - **Clients.** Client ID Metadata Documents are fetched only over https,
-  only from public addresses (the resolved address is pinned), without
-  redirects, within 5 s and 64 KiB, and must list the exact redirect URI.
+  only from public addresses (the resolved address is pinned), never
+  through a proxy from the environment, without redirects, within 5 s and
+  64 KiB. Every redirect URI they list must be https (or http on
+  localhost) without a fragment, and the request's redirect URI must be
+  one of them exactly. When a document can't be fetched or is invalid,
+  the sign-in page says only that (details go to the server log), so it
+  can't be used to probe other servers.
+- **State file.** `revoke-all` and `set-password` take the same file lock
+  as the server, so changes made while it runs are never lost.
 - **Tool policy, Claude's approval setting, and the audit log** are the
   next layers; see sections 3 and 6.

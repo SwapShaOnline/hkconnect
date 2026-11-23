@@ -111,10 +111,16 @@ enum Command {
         #[arg(long)]
         public_url: Option<String>,
         /// Trust `X-Forwarded-For` from the proxy in front for the client
-        /// address (sign-in rate limiting). Only set it if a proxy always
-        /// sets that header [env: `HKC_MCP_TRUST_PROXY`=true].
+        /// address (rate limiting). It is believed only from a loopback
+        /// peer, or one in --trusted-proxies [env: `HKC_MCP_TRUST_PROXY`=true].
         #[arg(long)]
         trust_proxy: bool,
+        /// Besides loopback, proxy addresses or networks (comma-separated
+        /// CIDRs, e.g. `172.16.0.0/12` for Docker's bridge) whose
+        /// `X-Forwarded-For` is believed. Implies --trust-proxy
+        /// [env: `HKC_MCP_TRUSTED_PROXIES`].
+        #[arg(long)]
+        trusted_proxies: Option<String>,
         /// Accept dynamic client registration at /register
         /// [env: `HKC_MCP_ALLOW_DCR`=true].
         #[arg(long)]
@@ -227,6 +233,7 @@ async fn run(cli: Cli, env: &EnvFile) -> Result<()> {
             listen,
             public_url,
             trust_proxy,
+            trusted_proxies,
             allow_dcr,
             allowed_clients,
         } => {
@@ -237,6 +244,13 @@ async fn run(cli: Cli, env: &EnvFile) -> Result<()> {
                 .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 8787)));
             let mut config = OAuthConfig::new(&public_url)?;
             config.trust_proxy = switch(trust_proxy, env, "HKC_MCP_TRUST_PROXY")?;
+            if let Some(list) = setting(trusted_proxies, env, "HKC_MCP_TRUSTED_PROXIES")? {
+                config.trusted_proxies = oauth::parse_cidrs(&list)
+                    .map_err(|e| anyhow::anyhow!("invalid HKC_MCP_TRUSTED_PROXIES: {e}"))?;
+                if !config.trusted_proxies.is_empty() {
+                    config.trust_proxy = true;
+                }
+            }
             config.allow_dcr = switch(allow_dcr, env, "HKC_MCP_ALLOW_DCR")?;
             let allowed_clients = setting(allowed_clients, env, "HKC_MCP_ALLOWED_CLIENTS")?;
             config.allowed_clients = allowed_clients.map(|list| {
@@ -245,6 +259,22 @@ async fn run(cli: Cli, env: &EnvFile) -> Result<()> {
                     .filter(|c| !c.is_empty())
                     .collect()
             });
+            if config.allowed_clients.is_none() {
+                tracing::warn!(
+                    "any OAuth client can ask to connect; after your first sign-in, set \
+                     HKC_MCP_ALLOWED_CLIENTS to the client_id in the `sign-in page shown` \
+                     log line (see docs/mcp.md)"
+                );
+            }
+            if config.trust_proxy && config.trusted_proxies.is_empty() && !listen.ip().is_loopback()
+            {
+                tracing::warn!(
+                    %listen,
+                    "--trust-proxy: X-Forwarded-For is believed only from loopback peers; \
+                     if your proxy connects from elsewhere (e.g. a Docker bridge), list it \
+                     in HKC_MCP_TRUSTED_PROXIES"
+                );
+            }
             let oauth = Arc::new(OAuth::new(config, StateFile::new(store.oauth_file())));
             if !oauth.has_password().await? {
                 bail!("no sign-in password is set; run `hkc-mcp set-password` first");

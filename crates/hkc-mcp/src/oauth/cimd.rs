@@ -9,9 +9,12 @@
 //! - the host must resolve only to public addresses (no loopback, private,
 //!   link-local, CGNAT, multicast, documentation, ...), and the connection is
 //!   pinned to the checked address so DNS can't change in between;
-//! - no redirects, 5 s total timeout, 64 KiB body limit;
+//! - no redirects, no proxy (an `HTTPS_PROXY` in the environment would
+//!   bypass the address check and pinning), 5 s total timeout, 64 KiB body
+//!   limit;
 //! - the document's `client_id` must equal the URL exactly, it must list
-//!   redirect URIs, and it must be a public client (`none` auth).
+//!   redirect URIs that are each https (or http on loopback) without a
+//!   fragment, and it must be a public client (`none` auth).
 //!
 //! Results are cached briefly. Tests may lift the https and public-address
 //! rules to use a local fake server; that switch exists only in test builds.
@@ -91,6 +94,15 @@ impl Fetcher {
         }
     }
 
+    /// The document for `client_id` if it is cached and fresh.
+    pub async fn cached(&self, client_id: &str) -> Option<ClientInfo> {
+        let cache = self.cache.lock().await;
+        cache
+            .get(client_id)
+            .filter(|(at, _)| at.elapsed() < CACHE_FOR)
+            .map(|(_, info)| info.clone())
+    }
+
     /// Fetch and validate the document for `client_id`.
     pub async fn resolve(&self, client_id: &str) -> Result<ClientInfo, String> {
         {
@@ -120,6 +132,10 @@ impl Fetcher {
             .port_or_known_default()
             .ok_or("client id URL has no port")?;
         let mut builder = reqwest::Client::builder()
+            // Never through a proxy from the environment: the proxy would
+            // resolve and connect itself, bypassing the public-address
+            // check and the pinning below.
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(TIMEOUT)
             .connect_timeout(Duration::from_secs(3))
@@ -222,6 +238,17 @@ fn validate(client_id: &str, doc: Document) -> Result<ClientInfo, String> {
     }
     if doc.redirect_uris.len() > 20 || doc.redirect_uris.iter().any(|u| u.len() > 2048) {
         return Err("the metadata document's redirect_uris are too many or too long".into());
+    }
+    if !doc
+        .redirect_uris
+        .iter()
+        .all(|u| super::valid_redirect_uri(u))
+    {
+        return Err(
+            "the metadata document lists a redirect URI that is not https (or http on \
+             localhost) or has a fragment"
+                .into(),
+        );
     }
     match doc.token_endpoint_auth_method.as_deref() {
         None | Some("none") => {}
@@ -417,5 +444,27 @@ mod tests {
         })))
         .await;
         assert!(Fetcher::allowing_local().resolve(&id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn unsafe_redirect_uris_are_rejected() {
+        for bad in [
+            "http://evil.example/cb",
+            "javascript:alert(1)",
+            "https://app.example/cb#frag",
+            "myapp://callback",
+        ] {
+            let server = MockServer::start().await;
+            let id = format!("{}/client.json", server.uri());
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "client_id": id,
+                    "redirect_uris": ["https://app.example/cb", bad],
+                })))
+                .mount(&server)
+                .await;
+            let err = Fetcher::allowing_local().resolve(&id).await.unwrap_err();
+            assert!(err.contains("redirect URI"), "{bad}: {err}");
+        }
     }
 }

@@ -4,9 +4,17 @@
 //! The file is re-read on every operation and rewritten atomically (0600)
 //! after every change, so `hkc-mcp revoke-all` or `set-password` run from
 //! another process take effect on the running server's next request.
+//!
+//! Every read-modify-write holds an exclusive advisory lock on a lock file
+//! next to the state file (`<name>.lock`), taken by the server and the CLI
+//! subcommands alike, so a CLI change can't be lost to a server write that
+//! started from an older copy. An update that changes nothing does not
+//! rewrite the file.
 
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
 use jiff::{SignedDuration, Timestamp};
@@ -18,6 +26,8 @@ use crate::store::write_private;
 
 /// Format version written by this release.
 const VERSION: u32 = 1;
+/// Longest wait for another process's lock on the state file.
+const LOCK_WAIT: Duration = Duration::from_secs(10);
 
 /// Everything persisted.
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -141,11 +151,21 @@ impl State {
     }
 }
 
-/// The state file, with in-process serialization of read-modify-write.
+/// The state file, with in-process and cross-process serialization of
+/// read-modify-write.
 #[derive(Debug)]
 pub struct StateFile {
     path: PathBuf,
     lock: Mutex<()>,
+}
+
+/// Holds the exclusive file lock until dropped.
+struct FileLock(File);
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
 }
 
 impl StateFile {
@@ -157,17 +177,72 @@ impl StateFile {
         }
     }
 
-    fn load_unlocked(&self) -> Result<State> {
-        let text = match std::fs::read_to_string(&self.path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(State::default()),
-            Err(e) => {
-                return Err(e).with_context(|| format!("could not read {}", self.path.display()));
+    fn lock_path(&self) -> PathBuf {
+        let mut name = self
+            .path
+            .file_name()
+            .map(std::ffi::OsStr::to_os_string)
+            .unwrap_or_default();
+        name.push(".lock");
+        self.path.with_file_name(name)
+    }
+
+    /// Take the exclusive cross-process lock, waiting (without blocking the
+    /// runtime) up to [`LOCK_WAIT`].
+    async fn lock_file(&self) -> Result<FileLock> {
+        let path = self.lock_path();
+        if let Some(dir) = path.parent() {
+            crate::store::create_private_dir(dir)
+                .with_context(|| format!("could not create {}", dir.display()))?;
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).truncate(false).write(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let file = options
+            .open(&path)
+            .with_context(|| format!("could not open {}", path.display()))?;
+        let started = Instant::now();
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(FileLock(file)),
+                Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_WAIT => {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    bail!(
+                        "{} is locked by another hkc-mcp process; try again",
+                        path.display()
+                    )
+                }
+                Err(std::fs::TryLockError::Error(e)) => {
+                    return Err(e).with_context(|| format!("could not lock {}", path.display()));
+                }
             }
-        };
+        }
+    }
+
+    /// The file's text (empty if it doesn't exist).
+    fn read_text(&self) -> Result<String> {
+        match std::fs::read_to_string(&self.path) {
+            Ok(text) => Ok(text),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(e) => Err(e).with_context(|| format!("could not read {}", self.path.display())),
+        }
+    }
+
+    fn load_unlocked(&self) -> Result<State> {
+        let text = self.read_text()?;
+        self.parse(&text)
+    }
+
+    fn parse(&self, text: &str) -> Result<State> {
+        if text.is_empty() {
+            return Ok(State::default());
+        }
         // A damaged file is an error, never silently replaced: that would
         // drop the password hash.
-        let state: State = serde_json::from_str(&text)
+        let state: State = serde_json::from_str(text)
             .with_context(|| format!("{} is not valid OAuth state", self.path.display()))?;
         if state.version > VERSION {
             bail!(
@@ -185,16 +260,22 @@ impl StateFile {
         Ok(f(&self.load_unlocked()?))
     }
 
-    /// Change the state and save it. Expired tokens are pruned on the way.
+    /// Change the state and save it, under the in-process and the
+    /// cross-process lock. Expired tokens are pruned on the way. The file is
+    /// rewritten only if its contents change.
     pub async fn update<T>(&self, f: impl FnOnce(&mut State) -> T) -> Result<T> {
         let _guard = self.lock.lock().await;
-        let mut state = self.load_unlocked()?;
+        let _file_lock = self.lock_file().await?;
+        let before = self.read_text()?;
+        let mut state = self.parse(&before)?;
         let out = f(&mut state);
         state.prune(Timestamp::now());
         state.version = VERSION;
         let bytes = serde_json::to_vec_pretty(&state)?;
-        write_private(&self.path, &bytes)
-            .with_context(|| format!("could not save {}", self.path.display()))?;
+        if bytes != before.as_bytes() {
+            write_private(&self.path, &bytes)
+                .with_context(|| format!("could not save {}", self.path.display()))?;
+        }
         Ok(out)
     }
 }
@@ -242,6 +323,74 @@ mod tests {
                 .await
                 .unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn an_update_that_changes_nothing_does_not_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oauth.json");
+        let file = StateFile::new(path.clone());
+        file.update(|s| s.password_hash = Some("h".into()))
+            .await
+            .unwrap();
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        for _ in 0..20 {
+            file.update(|s| s.tokens.contains_key("nope"))
+                .await
+                .unwrap();
+        }
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            modified
+        );
+    }
+
+    /// Two handles on one file (as the server and a CLI subcommand would
+    /// have), each in its own thread and runtime: no update is lost.
+    #[test]
+    fn concurrent_handles_do_not_lose_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oauth.json");
+        let threads: Vec<_> = (0..2)
+            .map(|t| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_time()
+                        .build()
+                        .unwrap();
+                    let file = StateFile::new(path);
+                    rt.block_on(async {
+                        for i in 0..40 {
+                            file.update(|s| {
+                                s.clients.insert(
+                                    format!("c{t}-{i}"),
+                                    RegisteredClient {
+                                        redirect_uris: vec![],
+                                        client_name: None,
+                                        registered_at: Timestamp::now(),
+                                    },
+                                );
+                            })
+                            .await
+                            .unwrap();
+                        }
+                    });
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let file = StateFile::new(path);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        assert_eq!(rt.block_on(file.read(|s| s.clients.len())).unwrap(), 80);
     }
 
     #[tokio::test]

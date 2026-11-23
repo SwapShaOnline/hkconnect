@@ -119,6 +119,16 @@ impl Harness {
         .await
     }
 
+    /// GET from a given TCP peer.
+    async fn get_from(&self, uri: &str, peer: SocketAddr) -> Response {
+        let mut request = Request::get(uri)
+            .header(header::HOST, HOST)
+            .body(Body::empty())
+            .unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer));
+        self.send(request).await
+    }
+
     fn authorize_query(&self, challenge: &str, extra: &[(&str, &str)]) -> String {
         let mut pairs = vec![
             ("response_type", "code"),
@@ -176,6 +186,20 @@ impl Harness {
         password: &str,
         forwarded_for: Option<&str>,
     ) -> Response {
+        let peer = SocketAddr::from(([127, 0, 0, 1], 40000));
+        self.submit_from(request_id, csrf, cookie, password, forwarded_for, peer)
+            .await
+    }
+
+    async fn submit_from(
+        &self,
+        request_id: &str,
+        csrf: &str,
+        cookie: Option<&str>,
+        password: &str,
+        forwarded_for: Option<&str>,
+        peer: SocketAddr,
+    ) -> Response {
         let mut builder = Request::post("/authorize")
             .header(header::HOST, HOST)
             .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
@@ -192,9 +216,7 @@ impl Harness {
                 ("password", password),
             ])))
             .unwrap();
-        request
-            .extensions_mut()
-            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40000))));
+        request.extensions_mut().insert(ConnectInfo(peer));
         self.send(request).await
     }
 
@@ -969,4 +991,281 @@ fn public_url_must_be_an_https_origin() {
     assert_eq!(c.issuer(), "https://car.example.com:8443");
     assert_eq!(c.resource(), "https://car.example.com:8443/mcp");
     assert_eq!(c.host(), "car.example.com:8443");
+}
+
+// ----- abuse limits -----
+
+fn peer(s: &str) -> SocketAddr {
+    SocketAddr::new(s.parse().unwrap(), 40000)
+}
+
+/// The hidden form fields and cookie of a sign-in page response.
+async fn page_fields(response: Response) -> (String, String, String) {
+    assert_eq!(response.status(), StatusCode::OK);
+    let cookie = response.headers()[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let html = text(response).await;
+    let field = |name: &str| {
+        let marker = format!("name=\"{name}\" value=\"");
+        let start = html.find(&marker).unwrap() + marker.len();
+        html[start..].split('"').next().unwrap().to_owned()
+    };
+    (field("request"), field("csrf"), cookie)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_wrong_passwords_are_charged_before_hashing() {
+    let h = Arc::new(harness().await);
+    let (_, challenge) = pkce();
+    // 100 pages (opened from different addresses), 300 concurrent wrong
+    // passwords from one address.
+    let mut pages = Vec::new();
+    for i in 0..100u32 {
+        let from = peer(&format!("198.51.100.{}", i + 1));
+        let response = h.get_from(&h.authorize_query(&challenge, &[]), from).await;
+        pages.push(page_fields(response).await);
+    }
+    let tasks: Vec<_> = (0..300)
+        .map(|i| {
+            let h = Arc::clone(&h);
+            let (request_id, csrf, cookie) = pages[i % pages.len()].clone();
+            tokio::spawn(async move {
+                h.submit_from(
+                    &request_id,
+                    &csrf,
+                    Some(&cookie),
+                    "not the password",
+                    None,
+                    peer("203.0.113.66"),
+                )
+                .await
+                .status()
+            })
+        })
+        .collect();
+    let mut statuses = Vec::new();
+    for t in tasks {
+        statuses.push(t.await.unwrap());
+    }
+    let (verified, peak) = h.oauth.verify_stats();
+    assert!(
+        verified <= 4,
+        "{verified} password hashes for one address (3 free + 1)"
+    );
+    assert!(verified >= 1);
+    assert!(peak <= super::MAX_CONCURRENT_VERIFICATIONS, "peak {peak}");
+    assert!(
+        statuses
+            .iter()
+            .all(|s| *s == StatusCode::UNAUTHORIZED || *s == StatusCode::TOO_MANY_REQUESTS),
+        "{statuses:?}"
+    );
+    assert_eq!(
+        statuses
+            .iter()
+            .filter(|s| **s == StatusCode::UNAUTHORIZED)
+            .count(),
+        verified
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn one_page_allows_only_a_few_hashes_even_from_many_addresses() {
+    let h = Arc::new(harness_with(|c| c.trust_proxy = true).await);
+    let (_, challenge) = pkce();
+    let (request_id, csrf, cookie) = h.open_page(&challenge).await;
+    let tasks: Vec<_> = (0..60u32)
+        .map(|i| {
+            let h = Arc::clone(&h);
+            let (request_id, csrf, cookie) = (request_id.clone(), csrf.clone(), cookie.clone());
+            tokio::spawn(async move {
+                let xff = format!("192.0.2.{}", i + 1);
+                h.submit(&request_id, &csrf, Some(&cookie), "nope nope", Some(&xff))
+                    .await
+                    .status()
+            })
+        })
+        .collect();
+    for t in tasks {
+        t.await.unwrap();
+    }
+    let (verified, peak) = h.oauth.verify_stats();
+    assert!(
+        verified <= super::MAX_ATTEMPTS_PER_PAGE as usize,
+        "{verified} hashes for one page"
+    );
+    assert!(peak <= super::MAX_CONCURRENT_VERIFICATIONS, "peak {peak}");
+}
+
+#[tokio::test]
+async fn invalid_refresh_flood_does_not_touch_the_state_file_and_is_limited() {
+    let h = harness().await;
+    let tokens = h.sign_in().await;
+    let file = h.dir.path().join("mcp-oauth.json");
+    let before = std::fs::read_to_string(&file).unwrap();
+    let modified = std::fs::metadata(&file).unwrap().modified().unwrap();
+    std::thread::sleep(Duration::from_millis(20));
+    let mut limited = false;
+    for i in 0..30 {
+        let (status, body) = h.refresh(&format!("bogus-{i}")).await;
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            assert_eq!(body["error"], "temporarily_unavailable");
+            limited = true;
+            break;
+        }
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    assert!(limited, "failed /token requests are rate limited");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+    assert_eq!(
+        std::fs::metadata(&file).unwrap().modified().unwrap(),
+        modified
+    );
+    // A real refresh from another address still works.
+    let mut request = Request::post("/token")
+        .header(header::HOST, HOST)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", tokens["refresh_token"].as_str().unwrap()),
+        ])))
+        .unwrap();
+    request
+        .extensions_mut()
+        .insert(ConnectInfo(peer("198.51.100.200")));
+    assert_eq!(h.send(request).await.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn one_address_cannot_evict_anothers_sign_in_page() {
+    let h = harness().await;
+    let (_, challenge) = pkce();
+    let owner = peer("198.51.100.10");
+    let response = h.get_from(&h.authorize_query(&challenge, &[]), owner).await;
+    let (request_id, csrf, cookie) = page_fields(response).await;
+    for _ in 0..(super::MAX_PENDING + 10) {
+        let response = h
+            .get_from(&h.authorize_query(&challenge, &[]), peer("203.0.113.99"))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+    let pending = h.oauth.pending.lock().await.len();
+    assert!(pending <= 1 + super::MAX_PENDING_PER_ADDRESS, "{pending}");
+    let response = h
+        .submit(&request_id, &csrf, Some(&cookie), PASSWORD, None)
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn forwarded_for_is_believed_only_from_trusted_peers() {
+    let h = harness_with(|c| c.trust_proxy = true).await;
+    let headers = {
+        let mut m = axum::http::HeaderMap::new();
+        m.insert("x-forwarded-for", "198.51.100.7".parse().unwrap());
+        m
+    };
+    let ip = |s: &str| s.parse::<std::net::IpAddr>().unwrap();
+    // Loopback peer (a local proxy): believed.
+    assert_eq!(
+        h.oauth.client_ip(&headers, Some(peer("127.0.0.1"))),
+        ip("198.51.100.7")
+    );
+    assert_eq!(
+        h.oauth.client_ip(&headers, Some(peer("::ffff:127.0.0.1"))),
+        ip("198.51.100.7")
+    );
+    // A direct client: its own address, whatever it claims.
+    assert_eq!(
+        h.oauth.client_ip(&headers, Some(peer("203.0.113.5"))),
+        ip("203.0.113.5")
+    );
+    assert_eq!(
+        h.oauth.client_ip(&headers, None),
+        ip("0.0.0.0"),
+        "no peer, no trust"
+    );
+    // A configured proxy network.
+    let h = harness_with(|c| {
+        c.trust_proxy = true;
+        c.trusted_proxies = super::parse_cidrs("172.16.0.0/12, fd00::/8").unwrap();
+    })
+    .await;
+    assert_eq!(
+        h.oauth.client_ip(&headers, Some(peer("172.17.0.1"))),
+        ip("198.51.100.7")
+    );
+    assert_eq!(
+        h.oauth.client_ip(&headers, Some(peer("fd00::1"))),
+        ip("198.51.100.7")
+    );
+    assert_eq!(
+        h.oauth.client_ip(&headers, Some(peer("172.32.0.1"))),
+        ip("172.32.0.1")
+    );
+    // Without --trust-proxy, never.
+    let h = harness().await;
+    assert_eq!(
+        h.oauth.client_ip(&headers, Some(peer("127.0.0.1"))),
+        ip("127.0.0.1")
+    );
+}
+
+#[test]
+fn cidr_parsing() {
+    use super::Cidr;
+    assert!("10.0.0.0/8".parse::<Cidr>().is_ok());
+    assert!("10.0.0.1".parse::<Cidr>().is_ok());
+    assert!("::1/128".parse::<Cidr>().is_ok());
+    assert!(
+        "0.0.0.0/0"
+            .parse::<Cidr>()
+            .unwrap()
+            .contains("8.8.8.8".parse().unwrap())
+    );
+    for bad in ["10.0.0.0/33", "nonsense", "10.0.0.0/x", "::/129"] {
+        assert!(bad.parse::<Cidr>().is_err(), "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn metadata_fetch_errors_are_generic_and_fetches_are_capped() {
+    let h = harness().await;
+    let (_, challenge) = pkce();
+    let remote = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(418))
+        .mount(&remote)
+        .await;
+    // The usual client, fetched (and cached) from elsewhere first.
+    assert_eq!(
+        h.get(&h.authorize_query(&challenge, &[])).await.status(),
+        StatusCode::OK
+    );
+    let from = peer("203.0.113.40");
+    let mut refused = false;
+    for i in 0..=super::FETCHES_PER_ADDRESS {
+        let id = format!("{}/c{i}.json", remote.uri());
+        let response = h
+            .get_from(&h.authorize_query(&challenge, &[("client_id", &id)]), from)
+            .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = text(response).await;
+        assert!(!body.contains("418"), "remote status echoed: {body}");
+        if body.contains("too many new clients") {
+            assert_eq!(i, super::FETCHES_PER_ADDRESS);
+            refused = true;
+        }
+    }
+    assert!(refused);
+    let fetched = remote.received_requests().await.unwrap().len();
+    assert_eq!(fetched, super::FETCHES_PER_ADDRESS);
+    // The known client is cached and still works from that address.
+    let response = h.get_from(&h.authorize_query(&challenge, &[]), from).await;
+    assert_eq!(response.status(), StatusCode::OK);
 }

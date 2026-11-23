@@ -15,6 +15,11 @@
 //!   dynamic client registration. An optional allowlist restricts both.
 //! - Tokens: opaque 256-bit values, stored only as SHA-256 hashes, bound to
 //!   the `/mcp` resource; access 1 h, refresh 30 days.
+//! - Abuse limits: sign-in attempts are charged before any password hashing
+//!   and at most [`MAX_CONCURRENT_VERIFICATIONS`] hashes run at once; failed
+//!   `/token` requests, client metadata fetches and open sign-in pages are
+//!   capped per client address. `X-Forwarded-For` is believed only when the
+//!   TCP peer is loopback or a configured trusted proxy.
 
 pub mod cimd;
 pub mod crypto;
@@ -37,12 +42,12 @@ use axum::routing::{get, post};
 use axum::{Form, Json, Router};
 use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use url::Url;
 
 use self::cimd::{ClientInfo, Fetcher};
 use self::crypto::{ct_eq, hash_token, is_s256_challenge, pkce_s256_matches, random_token};
-use self::limiter::Limiter;
+use self::limiter::{Limiter, Window};
 use self::state::{Kind, RegisteredClient, StateFile};
 use crate::tools::AuthenticatedClient;
 
@@ -50,6 +55,20 @@ use crate::tools::AuthenticatedClient;
 const PENDING_TTL: Duration = Duration::from_secs(10 * 60);
 /// Most sign-in pages open at once.
 const MAX_PENDING: usize = 100;
+/// Most sign-in pages open at once from one client address; opening another
+/// discards that address's oldest, never someone else's.
+const MAX_PENDING_PER_ADDRESS: usize = 3;
+/// Most password hashes computed at once (Argon2 uses ~19 MiB each); further
+/// attempts are refused straight away rather than queued.
+pub const MAX_CONCURRENT_VERIFICATIONS: usize = 2;
+/// Client metadata documents fetched at once; further fetches are refused.
+const MAX_CONCURRENT_FETCHES: usize = 4;
+/// Window for the metadata fetch caps below.
+const FETCH_WINDOW: Duration = Duration::from_secs(10 * 60);
+/// Uncached metadata fetches per client address per [`FETCH_WINDOW`].
+const FETCHES_PER_ADDRESS: usize = 10;
+/// Uncached metadata fetches overall per [`FETCH_WINDOW`].
+const FETCHES_GLOBAL: usize = 60;
 /// Most authorization codes outstanding (including used ones kept for reuse
 /// detection).
 const MAX_CODES: usize = 100;
@@ -68,8 +87,12 @@ pub struct OAuthConfig {
     pub allow_dcr: bool,
     /// When set, only these client ids may authorize.
     pub allowed_clients: Option<Vec<String>>,
-    /// Take the client address from `X-Forwarded-For` (behind a proxy).
+    /// Take the client address from `X-Forwarded-For` (behind a proxy),
+    /// when the TCP peer is loopback or in `trusted_proxies`.
     pub trust_proxy: bool,
+    /// Besides loopback, the peer networks whose `X-Forwarded-For` is
+    /// believed (with `trust_proxy`).
+    pub trusted_proxies: Vec<Cidr>,
     /// Access token lifetime.
     pub access_ttl: SignedDuration,
     /// Refresh token lifetime.
@@ -107,6 +130,7 @@ impl OAuthConfig {
             allow_dcr: false,
             allowed_clients: None,
             trust_proxy: false,
+            trusted_proxies: Vec::new(),
             access_ttl: SignedDuration::from_hours(1),
             refresh_ttl: SignedDuration::from_hours(30 * 24),
             code_ttl: Duration::from_secs(60),
@@ -142,6 +166,13 @@ impl OAuthConfig {
             .unwrap_or_default()
     }
 
+    /// Whether a TCP peer may set the client address with
+    /// `X-Forwarded-For`: loopback, or a configured trusted proxy.
+    pub fn is_trusted_proxy(&self, peer: IpAddr) -> bool {
+        let peer = canonical(peer);
+        peer.is_loopback() || self.trusted_proxies.iter().any(|c| c.contains(peer))
+    }
+
     fn secure_cookies(&self) -> bool {
         self.issuer.starts_with("https://")
     }
@@ -155,10 +186,85 @@ impl OAuthConfig {
     }
 }
 
+/// An IPv4 or IPv6 network, such as `172.16.0.0/12` (a bare address is a
+/// single host).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cidr {
+    addr: IpAddr,
+    prefix: u8,
+}
+
+impl Cidr {
+    /// Whether `ip` is inside this network.
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        match (self.addr, canonical(ip)) {
+            (IpAddr::V4(net), IpAddr::V4(ip)) => {
+                let mask = u32::MAX
+                    .checked_shl(32 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u32::from(net) & mask == u32::from(ip) & mask
+            }
+            (IpAddr::V6(net), IpAddr::V6(ip)) => {
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u128::from(net) & mask == u128::from(ip) & mask
+            }
+            _ => false,
+        }
+    }
+}
+
+impl std::str::FromStr for Cidr {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        let (addr, prefix) = s.split_once('/').unwrap_or((s, ""));
+        let addr = canonical(
+            addr.parse::<IpAddr>()
+                .map_err(|_| format!("{s:?} is not an IP address or CIDR network"))?,
+        );
+        let max = if addr.is_ipv4() { 32 } else { 128 };
+        let prefix = if prefix.is_empty() {
+            max
+        } else {
+            prefix
+                .parse::<u8>()
+                .ok()
+                .filter(|p| *p <= max)
+                .ok_or_else(|| format!("{s:?} has an invalid prefix length"))?
+        };
+        Ok(Self { addr, prefix })
+    }
+}
+
+/// IPv4-mapped IPv6 addresses as plain IPv4.
+fn canonical(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        IpAddr::V4(_) => ip,
+    }
+}
+
+/// Parse a comma-separated list of networks.
+pub fn parse_cidrs(list: &str) -> Result<Vec<Cidr>, String> {
+    list.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::parse)
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 struct Pending {
     client_id: String,
-    client_label: String,
+    /// The name the client gave itself (not verified).
+    client_name: Option<String>,
+    /// The host of a URL client id (verified by fetching it).
+    client_host: Option<String>,
+    /// The address (limiter key) that opened the page.
+    opened_by: IpAddr,
     redirect_uri: String,
     state: Option<String>,
     challenge: String,
@@ -179,6 +285,41 @@ struct Code {
     used_by: Option<String>,
 }
 
+/// Counts password verifications (tests only).
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub struct VerifyStats {
+    total: std::sync::atomic::AtomicUsize,
+    in_flight: std::sync::atomic::AtomicUsize,
+    peak: std::sync::atomic::AtomicUsize,
+}
+
+#[cfg(test)]
+impl VerifyStats {
+    /// Count one verification for as long as the guard lives; it also
+    /// lingers a little so that overlapping verifications really overlap.
+    fn enter(self: &Arc<Self>) -> impl Drop {
+        use std::sync::atomic::Ordering::SeqCst;
+        struct Guard(Arc<VerifyStats>);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                self.0.in_flight.fetch_sub(1, SeqCst);
+            }
+        }
+        self.total.fetch_add(1, SeqCst);
+        let now = self.in_flight.fetch_add(1, SeqCst) + 1;
+        self.peak.fetch_max(now, SeqCst);
+        std::thread::sleep(Duration::from_millis(20));
+        Guard(Arc::clone(self))
+    }
+
+    /// (verifications so far, most at once).
+    pub fn snapshot(&self) -> (usize, usize) {
+        use std::sync::atomic::Ordering::SeqCst;
+        (self.total.load(SeqCst), self.peak.load(SeqCst))
+    }
+}
+
 /// The OAuth server.
 #[derive(Debug)]
 pub struct OAuth {
@@ -188,6 +329,16 @@ pub struct OAuth {
     pending: Mutex<HashMap<String, Pending>>,
     codes: Mutex<HashMap<String, Code>>,
     limiter: std::sync::Mutex<Limiter>,
+    token_limiter: std::sync::Mutex<Limiter>,
+    verify_slots: Arc<Semaphore>,
+    fetch_window: std::sync::Mutex<Window>,
+    fetch_slots: Semaphore,
+    #[cfg(test)]
+    verify_stats: Arc<VerifyStats>,
+}
+
+fn locked<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 impl OAuth {
@@ -205,6 +356,16 @@ impl OAuth {
             pending: Mutex::new(HashMap::new()),
             codes: Mutex::new(HashMap::new()),
             limiter: std::sync::Mutex::new(Limiter::default()),
+            token_limiter: std::sync::Mutex::new(Limiter::token()),
+            verify_slots: Arc::new(Semaphore::new(MAX_CONCURRENT_VERIFICATIONS)),
+            fetch_window: std::sync::Mutex::new(Window::new(
+                FETCH_WINDOW,
+                FETCHES_PER_ADDRESS,
+                FETCHES_GLOBAL,
+            )),
+            fetch_slots: Semaphore::new(MAX_CONCURRENT_FETCHES),
+            #[cfg(test)]
+            verify_stats: Arc::default(),
         }
     }
 
@@ -240,7 +401,10 @@ impl OAuth {
             .with_state(Arc::clone(self))
     }
 
-    async fn resolve_client(&self, client_id: &str) -> Result<ClientInfo, String> {
+    /// The client's metadata, or a message for the sign-in error page. The
+    /// page never echoes what a remote server answered (that would make
+    /// `/authorize` a blind probe); details go to the server log.
+    async fn resolve_client(&self, client_id: &str, ip: IpAddr) -> Result<ClientInfo, String> {
         if client_id.is_empty() || client_id.len() > 2048 {
             return Err("missing or invalid client_id".into());
         }
@@ -253,7 +417,23 @@ impl OAuth {
             ));
         }
         if cimd::is_url_client_id(client_id) {
-            return self.cimd.resolve(client_id).await;
+            if let Some(info) = self.cimd.cached(client_id).await {
+                return Ok(info);
+            }
+            if !locked(&self.fetch_window).take(ip, Instant::now()) {
+                tracing::warn!(%ip, client_id, "client metadata fetch refused: rate limit");
+                return Err("too many new clients; try again later".into());
+            }
+            let Ok(_slot) = self.fetch_slots.try_acquire() else {
+                tracing::warn!(%ip, client_id, "client metadata fetch refused: busy");
+                return Err("the server is busy; try again in a moment".into());
+            };
+            return self.cimd.resolve(client_id).await.map_err(|detail| {
+                tracing::warn!(%ip, client_id, error = %detail, "client metadata rejected");
+                "its client metadata document could not be fetched or is not valid \
+                 (details are in the server log)"
+                    .to_owned()
+            });
         }
         if !self.config.allow_dcr {
             return Err(format!("unknown client {client_id:?}"));
@@ -284,13 +464,20 @@ impl OAuth {
             .await
     }
 
+    /// The client address for rate limiting: the TCP peer, or, with
+    /// `trust_proxy` and a peer that is loopback or a trusted proxy, the
+    /// address that proxy put in `X-Forwarded-For`.
     fn client_ip(&self, headers: &HeaderMap, peer: Option<SocketAddr>) -> IpAddr {
+        let Some(peer) = peer.map(|p| canonical(p.ip())) else {
+            return IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+        };
         if self.config.trust_proxy
+            && self.config.is_trusted_proxy(peer)
             && let Some(ip) = forwarded_for(headers)
         {
-            return ip;
+            return canonical(ip);
         }
-        peer.map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |p| p.ip())
+        peer
     }
 }
 
@@ -476,15 +663,18 @@ fn set_csrf_cookie(o: &OAuth, response: &mut Response, value: Option<&str>) {
 
 async fn authorize_page(
     State(o): State<Arc<OAuth>>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
     axum::extract::Query(pairs): axum::extract::Query<Vec<(String, String)>>,
 ) -> Response {
+    let ip = o.client_ip(&headers, peer);
     let params = match single(pairs) {
         Ok(p) => p,
         Err(e) => return page::error(StatusCode::BAD_REQUEST, &e),
     };
     let get = |k: &str| params.get(k).map(String::as_str);
     let client_id = get("client_id").unwrap_or("");
-    let client = match o.resolve_client(client_id).await {
+    let client = match o.resolve_client(client_id, ip).await {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!(client_id, error = %e, "authorization refused: client");
@@ -542,7 +732,11 @@ async fn authorize_page(
     let csrf = random_token();
     let pending = Pending {
         client_id: client_id.to_owned(),
-        client_label: client.name.clone().unwrap_or_else(|| client_id.to_owned()),
+        client_name: client.name.clone(),
+        client_host: cimd::is_url_client_id(client_id)
+            .then(|| redirect_host(client_id))
+            .filter(|h| !h.is_empty()),
+        opened_by: limiter::key(ip),
         redirect_uri: redirect_uri.to_owned(),
         state: state.map(str::to_owned),
         challenge: challenge.to_owned(),
@@ -551,31 +745,30 @@ async fn authorize_page(
         created: Instant::now(),
         attempts: 0,
     };
-    {
-        let mut all = o.pending.lock().await;
-        all.retain(|_, p| p.created.elapsed() < PENDING_TTL);
-        if all.len() >= MAX_PENDING
-            && let Some(oldest) = all
-                .iter()
-                .min_by_key(|(_, p)| p.created)
-                .map(|(k, _)| k.clone())
-        {
-            all.remove(&oldest);
-        }
-        all.insert(request.clone(), pending.clone());
-    }
-    let mut response = page::sign_in(
-        StatusCode::OK,
-        &page::SignIn {
-            client: &pending.client_label,
-            redirect_host: &redirect_host(redirect_uri),
-            request: &request,
-            csrf: &csrf,
-            error: None,
-        },
-    );
+    o.add_pending(request.clone(), pending.clone()).await;
+    let mut response = sign_in_page(StatusCode::OK, &pending, &request, None);
     set_csrf_cookie(&o, &mut response, Some(&csrf));
     response
+}
+
+fn sign_in_page(
+    status: StatusCode,
+    pending: &Pending,
+    request: &str,
+    error: Option<&str>,
+) -> Response {
+    page::sign_in(
+        status,
+        &page::SignIn {
+            client_id: &pending.client_id,
+            client_host: pending.client_host.as_deref(),
+            client_name: pending.client_name.as_deref(),
+            redirect_host: &redirect_host(&pending.redirect_uri),
+            request,
+            csrf: &pending.csrf,
+            error,
+        },
+    )
 }
 
 /// The sign-in form's fields.
@@ -588,9 +781,66 @@ struct SignInForm {
 
 impl OAuth {
     fn limiter(&self) -> std::sync::MutexGuard<'_, Limiter> {
-        self.limiter
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        locked(&self.limiter)
+    }
+
+    fn token_limiter(&self) -> std::sync::MutexGuard<'_, Limiter> {
+        locked(&self.token_limiter)
+    }
+
+    /// Counts of password verifications so far (tests).
+    #[cfg(test)]
+    pub fn verify_stats(&self) -> (usize, usize) {
+        self.verify_stats.snapshot()
+    }
+
+    /// Remember an open sign-in page.
+    async fn add_pending(&self, request: String, pending: Pending) {
+        let mut all = self.pending.lock().await;
+        all.retain(|_, p| p.created.elapsed() < PENDING_TTL);
+        // One address can only displace its own pages, so it can't evict
+        // the owner's sign-in in progress (short of using many addresses).
+        let oldest = |all: &HashMap<String, Pending>, by: Option<IpAddr>| {
+            all.iter()
+                .filter(|(_, p)| by.is_none_or(|a| p.opened_by == a))
+                .min_by_key(|(_, p)| p.created)
+                .map(|(k, _)| k.clone())
+        };
+        let mine = all
+            .values()
+            .filter(|p| p.opened_by == pending.opened_by)
+            .count();
+        if mine >= MAX_PENDING_PER_ADDRESS
+            && let Some(k) = oldest(&all, Some(pending.opened_by))
+        {
+            all.remove(&k);
+        }
+        if all.len() >= MAX_PENDING
+            && let Some(k) = oldest(&all, None)
+        {
+            all.remove(&k);
+        }
+        all.insert(request, pending);
+    }
+
+    /// Charge one attempt to the sign-in page before hashing. `None` if the
+    /// page is gone or has used up its attempts (it is then discarded).
+    async fn reserve_page_attempt(&self, request: &str) -> Option<u32> {
+        let mut all = self.pending.lock().await;
+        let p = all.get_mut(request)?;
+        if p.attempts >= MAX_ATTEMPTS_PER_PAGE {
+            all.remove(request);
+            return None;
+        }
+        p.attempts += 1;
+        Some(p.attempts)
+    }
+
+    /// Give back a page attempt abandoned before hashing.
+    async fn refund_page_attempt(&self, request: &str) {
+        if let Some(p) = self.pending.lock().await.get_mut(request) {
+            p.attempts = p.attempts.saturating_sub(1);
+        }
     }
 
     /// Store a fresh single-use code for a completed sign-in.
@@ -622,39 +872,40 @@ impl OAuth {
         code
     }
 
-    /// Count a wrong password: against the address, and against the page
-    /// (which is discarded after a few).
-    async fn wrong_password(&self, ip: IpAddr, request: &str, pending: &Pending) -> Response {
-        self.limiter().failure(ip, Instant::now());
+    /// A wrong password (already charged to the address and the page when
+    /// reserved). The page is discarded after a few.
+    async fn wrong_password(
+        &self,
+        ip: IpAddr,
+        request: &str,
+        pending: &Pending,
+        attempt: u32,
+    ) -> Response {
         tracing::warn!(%ip, client_id = %pending.client_id, "sign-in failed: wrong password");
-        let attempts = {
-            let mut all = self.pending.lock().await;
-            let attempts = all.get_mut(request).map_or(u32::MAX, |p| {
-                p.attempts += 1;
-                p.attempts
-            });
-            if attempts >= MAX_ATTEMPTS_PER_PAGE {
-                all.remove(request);
-            }
-            attempts
-        };
-        if attempts >= MAX_ATTEMPTS_PER_PAGE {
+        if attempt >= MAX_ATTEMPTS_PER_PAGE {
+            self.pending.lock().await.remove(request);
             return page::error(
                 StatusCode::UNAUTHORIZED,
                 "Too many wrong passwords. Start again from the app that sent you here.",
             );
         }
-        page::sign_in(
+        sign_in_page(
             StatusCode::UNAUTHORIZED,
-            &page::SignIn {
-                client: &pending.client_label,
-                redirect_host: &redirect_host(&pending.redirect_uri),
-                request,
-                csrf: &pending.csrf,
-                error: Some("Wrong password."),
-            },
+            pending,
+            request,
+            Some("Wrong password."),
         )
     }
+}
+
+fn busy() -> Response {
+    let mut r = page::error(
+        StatusCode::TOO_MANY_REQUESTS,
+        "The server is busy checking other sign-in attempts. Try again in a few seconds.",
+    );
+    r.headers_mut()
+        .insert(header::RETRY_AFTER, HeaderValue::from_static("2"));
+    r
 }
 
 fn rate_limited(wait: Duration) -> Response {
@@ -675,8 +926,7 @@ async fn authorize_submit(
     Form(form): Form<SignInForm>,
 ) -> Response {
     let ip = o.client_ip(&headers, peer);
-    // Checked before anything else, so a locked-out address costs no
-    // password hashing.
+    // Checked before anything else, so a locked-out address costs nothing.
     if let Err(wait) = o.limiter().check(ip, Instant::now()) {
         tracing::warn!(%ip, "sign-in rate limited");
         return rate_limited(wait);
@@ -715,15 +965,48 @@ async fn authorize_submit(
             return page::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error.");
         }
     };
+    // Charge the attempt to the address (and globally) and to the page
+    // *before* hashing: concurrent submissions can't all slip past the
+    // limits while the first hashes are still running.
+    let reservation = match o.limiter().reserve(ip, Instant::now()) {
+        Ok(r) => r,
+        Err(wait) => {
+            tracing::warn!(%ip, "sign-in rate limited");
+            return rate_limited(wait);
+        }
+    };
+    let Some(attempt) = o.reserve_page_attempt(&form.request).await else {
+        o.limiter().refund(reservation);
+        return page::error(
+            StatusCode::BAD_REQUEST,
+            "This sign-in page has expired or has been used. Start again from the app that \
+             sent you here.",
+        );
+    };
+    // Bound the memory Argon2 can take: refuse rather than queue.
+    let Ok(slot) = Arc::clone(&o.verify_slots).try_acquire_owned() else {
+        o.limiter().refund(reservation);
+        o.refund_page_attempt(&form.request).await;
+        tracing::warn!(%ip, "sign-in refused: password checks busy");
+        return busy();
+    };
     let password = form.password;
+    #[cfg(test)]
+    let stats = Arc::clone(&o.verify_stats);
     let ok = password.len() <= MAX_PASSWORD_LEN
-        && tokio::task::spawn_blocking(move || crypto::verify_password(&password, &hash))
-            .await
-            .unwrap_or(false);
+        && tokio::task::spawn_blocking(move || {
+            // Held until the hash is done, even if the request is dropped.
+            let _slot = slot;
+            #[cfg(test)]
+            let _counted = stats.enter();
+            crypto::verify_password(&password, &hash)
+        })
+        .await
+        .unwrap_or(false);
     if !ok {
-        return o.wrong_password(ip, &form.request, &pending).await;
+        return o.wrong_password(ip, &form.request, &pending, attempt).await;
     }
-    o.limiter().success(ip);
+    o.limiter().success(reservation);
     if o.pending.lock().await.remove(&form.request).is_none() {
         // Submitted twice at once; the other submission won.
         return page::error(
@@ -742,14 +1025,40 @@ async fn authorize_submit(
     response
 }
 
-async fn token(State(o): State<Arc<OAuth>>, Form(pairs): Form<Vec<(String, String)>>) -> Response {
+async fn token(
+    State(o): State<Arc<OAuth>>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Form(pairs): Form<Vec<(String, String)>>,
+) -> Response {
+    let ip = o.client_ip(&headers, peer);
+    if let Err(wait) = o.token_limiter().check(ip, Instant::now()) {
+        tracing::warn!(%ip, "token request rate limited");
+        let secs = wait.as_secs().max(1);
+        let mut r = oauth_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "temporarily_unavailable",
+            "too many failed token requests; try again later",
+        );
+        r.headers_mut()
+            .insert(header::RETRY_AFTER, HeaderValue::from(secs));
+        return r;
+    }
+    let response = token_inner(&o, pairs).await;
+    if response.status().is_client_error() {
+        o.token_limiter().failure(ip, Instant::now());
+    }
+    response
+}
+
+async fn token_inner(o: &OAuth, pairs: Vec<(String, String)>) -> Response {
     let params = match single(pairs) {
         Ok(p) => p,
         Err(e) => return oauth_error(StatusCode::BAD_REQUEST, "invalid_request", &e),
     };
     match params.get("grant_type").map(String::as_str) {
-        Some("authorization_code") => exchange_code(&o, &params).await,
-        Some("refresh_token") => refresh(&o, &params).await,
+        Some("authorization_code") => exchange_code(o, &params).await,
+        Some("refresh_token") => refresh(o, &params).await,
         Some(_) => oauth_error(
             StatusCode::BAD_REQUEST,
             "unsupported_grant_type",
@@ -915,6 +1224,8 @@ async fn refresh(o: &OAuth, params: &HashMap<String, String>) -> Response {
     }
 }
 
+/// Whether a client may use `uri` as a redirect URI: https, or http on
+/// loopback, no fragment, at most 2048 bytes.
 fn valid_redirect_uri(uri: &str) -> bool {
     let Ok(url) = Url::parse(uri) else {
         return false;
