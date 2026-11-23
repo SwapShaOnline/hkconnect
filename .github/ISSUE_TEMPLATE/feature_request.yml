@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Check [docs/api-coverage.md](https://github.com/swapsha96/hkconnect/blob/main/docs/api-coverage.md)
+        Check [docs/api-coverage.md](https://github.com/SwapShaOnline/hkconnect/blob/main/docs/api-coverage.md)
         first: it lists every known endpoint and whether it is implemented. Regions other than India are out of scope.
 
         If your request is about a car model or endpoint that does not work yet, use the

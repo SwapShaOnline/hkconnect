@@ -11,7 +11,7 @@ You need a Rust toolchain at or above the MSRV (1.89) with `rustfmt` and
 
 ```sh
 rustup component add rustfmt clippy
-git clone https://github.com/swapsha96/hkconnect
+git clone https://github.com/SwapShaOnline/hkconnect
 cd hkconnect
 cargo build --workspace
 ```
