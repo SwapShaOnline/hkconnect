@@ -1,0 +1,71 @@
+{
+  "retCode": "S",
+  "resCode": "0000",
+  "resMsg": {
+    "tripPeriodType": 1,
+    "dayTripList": [
+      {
+        "tripDay": "20261117",
+        "dayTripCnt": 2,
+        "tripDrvTime": 30,
+        "tripIdleTime": 2,
+        "tripDist": 27,
+        "tripAvgSpeed": 58.5,
+        "tripMaxSpeed": 91,
+        "startLat": 12.9744,
+        "startLon": 77.5982,
+        "endLat": 12.9751,
+        "endLon": 77.5991,
+        "tripList": [
+          {
+            "tripStartTime": "20261117080003",
+            "tripStartCoord": {
+              "tripStartTime": "20261117080003",
+              "tripStartDate": {
+                "utc": "20261117023003",
+                "offset": 5.5
+              },
+              "lat": 12.9716,
+              "lon": 77.5946
+            },
+            "tripEndTime": "20261117081634",
+            "tripEndCoord": {
+              "tripEndTime": "20261117081625",
+              "tripEndDate": {
+                "utc": "20261117024625",
+                "offset": 5.5
+              },
+              "lat": 12.9723,
+              "lon": 77.5955
+            },
+            "serviceTID": 20261117080003
+          },
+          {
+            "tripStartTime": "20261117054442",
+            "tripStartCoord": {
+              "tripStartTime": "20261117054442",
+              "tripStartDate": {
+                "utc": "20261117001442",
+                "offset": 5.5
+              },
+              "lat": 12.973,
+              "lon": 77.5964
+            },
+            "tripEndTime": "20261117060156",
+            "tripEndCoord": {
+              "tripEndTime": "20261117060037",
+              "tripEndDate": {
+                "utc": "20261117003037",
+                "offset": 5.5
+              },
+              "lat": 12.9737,
+              "lon": 77.5973
+            },
+            "serviceTID": 20261117054442
+          }
+        ]
+      }
+    ]
+  },
+  "msgId": "df357350-e72e-11f1-9dfc-4e64db2623df"
+}

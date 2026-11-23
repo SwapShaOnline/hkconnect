@@ -1,0 +1,77 @@
+{
+  "retCode": "S",
+  "resCode": "0000",
+  "resMsg": {
+    "tripInfo": {
+      "tripDay": "20261117",
+      "dayTripCnt": 1,
+      "tripDrvTime": 15,
+      "tripIdleTime": 1,
+      "tripDist": 13,
+      "tripAvgSpeed": 59,
+      "tripMaxSpeed": 91,
+      "tripHardBreakingTime": 0,
+      "tripRapidAccelationTime": 0,
+      "tripExcessiveSpeedTime": 0,
+      "tripStartTime": "20261117080003",
+      "tripEndTime": "20261117081634",
+      "tripStartCoord": {
+        "tripStartTime": "20261117080003",
+        "tripStartDate": {
+          "utc": "20261117023003",
+          "offset": 5.5
+        },
+        "lat": 12.9758,
+        "lon": 77.6
+      },
+      "tripEndCoord": {
+        "tripEndTime": "20261117081625",
+        "tripEndDate": {
+          "utc": "20261117024625",
+          "offset": 5.5
+        },
+        "lat": 12.9765,
+        "lon": 77.6009
+      },
+      "tripList": [
+        {
+          "tripTime": "080345",
+          "lat": 12.9772,
+          "lon": 77.6018,
+          "tripDate": {
+            "utc": "20261117023345",
+            "offset": 5.5
+          }
+        },
+        {
+          "tripTime": "080355",
+          "lat": 12.9779,
+          "lon": 77.6027,
+          "tripDate": {
+            "utc": "20261117023355",
+            "offset": 5.5
+          }
+        },
+        {
+          "tripTime": "080405",
+          "lat": 12.9786,
+          "lon": 77.6036,
+          "tripDate": {
+            "utc": "20261117023405",
+            "offset": 5.5
+          }
+        },
+        {
+          "tripTime": "080415",
+          "lat": 12.9793,
+          "lon": 77.6045,
+          "tripDate": {
+            "utc": "20261117023415",
+            "offset": 5.5
+          }
+        }
+      ]
+    }
+  },
+  "msgId": "dfc46ce0-e72e-11f1-988b-3515c2cb16c9"
+}

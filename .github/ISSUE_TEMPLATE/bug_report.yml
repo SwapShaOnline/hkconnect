@@ -1,0 +1,100 @@
+name: Bug report
+description: Something in hkc or the hkconnect library does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!WARNING]
+        > **Redact personal data before submitting.** This issue is public. Remove or replace your
+        > **email, VIN, vehicle id, tokens (access, refresh, control), PIN, password, and any location
+        > or coordinates**. `hkc -v` output includes your vehicle id in request paths; trip and
+        > location output include where you have been. Use placeholders such as `MALTEST0000000001`
+        > and `00000000-0000-4000-8000-000000000001`.
+
+        Security problems (for example a token leaking into logs) should be reported privately:
+        see [SECURITY.md](https://github.com/swapsha96/hkconnect/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: hkc / hkconnect version
+      description: Output of `hkc --version`, or the hkconnect version in your Cargo.lock.
+      placeholder: hkc 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: brand
+    attributes:
+      label: Brand
+      options:
+        - Hyundai (Bluelink India)
+        - Kia (Kia Connect India)
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model and year
+      placeholder: Creta 2024
+    validations:
+      required: true
+  - type: dropdown
+    id: fuel
+    attributes:
+      label: Fuel type
+      options:
+        - Petrol
+        - Diesel
+        - CNG
+        - Hybrid
+        - Electric
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: remote-features
+    attributes:
+      label: Does `hkc info` list remote features for this car?
+      description: Run `hkc info` and check whether remote control features (for example remote start or door lock) are shown.
+      options:
+        - "Yes"
+        - "No"
+        - "hkc info fails"
+        - "Did not check"
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command run
+      description: The exact command, or the library call, that misbehaved.
+      placeholder: hkc -v status --refresh
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output with `-v`
+      description: Re-run the command with `-v` and paste the full output. **Redact your vehicle id, VIN, email, tokens and coordinates.**
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Include what the official app shows, if relevant.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system
+      placeholder: macOS 15, Ubuntu 24.04, ...
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Redaction check
+      options:
+        - label: I removed my email, VIN, vehicle id, tokens, PIN and any location data from this report.
+          required: true

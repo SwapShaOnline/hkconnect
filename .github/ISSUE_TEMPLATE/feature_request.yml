@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest a new capability for hkc or the hkconnect library.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [docs/api-coverage.md](https://github.com/swapsha96/hkconnect/blob/main/docs/api-coverage.md)
+        first: it lists every known endpoint and whether it is implemented. Regions other than India are out of scope.
+
+        If your request is about a car model or endpoint that does not work yet, use the
+        "New car / endpoint support" form instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: The task you are trying to accomplish, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: A command, flag, or library API you have in mind.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI (hkc)
+        - Library (hkconnect)
+        - Both
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: official-app
+    attributes:
+      label: Does the official app support this?
+      description: If so, describe what it does. Do not paste personal data.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contribution
+      options:
+        - label: I can help implement or test this on my car.
