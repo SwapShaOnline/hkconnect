@@ -49,9 +49,10 @@ server as described in the [setup guide](docs/mcp.md).
 | Reads: vehicles, status, location, info, trips | Verified on a real car (2024 Hyundai Creta, petrol, automatic) |
 | Lock | Verified on a real car (2024 Hyundai Creta): confirmed by the car in about 30 s |
 | Remote start with climate, stop | Verified on a real car (2024 Hyundai Creta): start confirmed in about 33 s, stop in about 15 s |
-| Unlock | Experimental: implemented to match the reference implementation and tested against a fake server; not yet verified on a real car |
-| Valet mode, send destination to navigation | Experimental: as above |
-| Hazard lights / horn | Experimental: as above, and the endpoint may not exist on non-CCS2 cars |
+| Unlock | Verified on a real car (2024 Hyundai Creta): confirmed by the car in about 12 s |
+| Send destination to navigation | Verified on a real car (2024 Hyundai Creta): confirmed by the car in about 24 s |
+| Valet mode | Works on a real car (2024 Hyundai Creta): on and off both took effect, but the server never reports the result, so `hkc` ends with "unknown" after waiting; check the car's screen |
+| Hazard lights / horn | Experimental: implemented to match the reference implementation and tested against a fake server; not yet verified on a real car, and the endpoint may not exist on non-CCS2 cars |
 | Newer "CCS2" cars | Not supported: status and remote commands return a clear error |
 | EV features (charging, charge limits, schedules) | Not implemented |
 | Other regions (EU, US, Canada, ...) | Out of scope; see [hyundai_kia_connect_api](https://github.com/Hyundai-Kia-Connect/hyundai_kia_connect_api) |
@@ -189,7 +190,7 @@ hkc start -t 18 --defrost --rear-defrost --yes
 hkc stop                     # needs HKC_PIN
 hkc hazard                   # flash the hazard lights; needs HKC_PIN; experimental
 hkc hazard --horn            # with the horn; asks for confirmation
-hkc valet on                 # valet mode on/off; asks for confirmation; needs HKC_PIN
+hkc valet on                 # valet mode on/off; asks for confirmation; needs HKC_PIN; result not reported (see Support)
 hkc navigate --help          # send a destination to the car's navigation; asks for confirmation; needs HKC_PIN
 
 hkc bench                    # API latency, read-only (see docs/performance.md)

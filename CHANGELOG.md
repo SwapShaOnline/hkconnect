@@ -17,6 +17,13 @@ library and the `hkc` CLI are versioned together.
 - `server.json` for listing `hkc-mcp` in the MCP Registry, and the
   `mcp-name:` line in the README that the registry checks on crates.io.
 
+### Changed
+
+- Docs: unlock (car confirmed in about 12 s) and send destination (about
+  24 s) are now verified on a 2024 Hyundai Creta. Valet mode works on the
+  same car, but the server never reports its result, so `hkc valet` and
+  `set_valet_mode` end with "unknown"; check the car's screen.
+
 ## [0.1.2] - 2026-11-24
 
 ### Added
