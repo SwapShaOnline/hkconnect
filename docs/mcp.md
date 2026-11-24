@@ -171,18 +171,29 @@ The credentials come from the `.env` file above. You can also pass settings
 in an `"env": { "HKC_MCP_ENABLE": "start_climate" }` object, but don't put
 the Bluelink password in this file. Restart Claude Desktop.
 
-**Claude Code**:
+**Claude Code**: install the plugin, which adds the MCP server and the agent
+skill (when to use the tools, how to report the data's age, never to resend a
+command) in one step:
+
+```
+/plugin install hkconnect --marketplace SwapShaOnline/hkconnect
+```
+
+This needs Claude Code 2.1.275 or later. On older versions, run
+`/plugin marketplace add SwapShaOnline/hkconnect`, then
+`/plugin install hkconnect@hkconnect`.
+
+The plugin starts `hkc-mcp` by name, so it must be on the `PATH` Claude Code
+sees. If `/mcp` shows the server as failed (for example when the app was
+started from the Dock and doesn't see `~/.cargo/bin`), disable the plugin's
+server and add it with its full path instead:
 
 ```sh
 claude mcp add car -- "$(which hkc-mcp)" stdio
 ```
 
-Optionally, install the agent skill so Claude knows when to use these tools,
-to report how old the data is, and never to resend a command:
-
-```sh
-cp -R skills/hkconnect ~/.claude/skills/   # from a checkout of this repo
-```
+If you added the server this way before, remove it once you install the
+plugin (`claude mcp remove car`), or the tools will be listed twice.
 
 ## 5. Remote use: claude.ai and the mobile apps
 
