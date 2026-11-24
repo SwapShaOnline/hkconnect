@@ -181,6 +181,26 @@ hkc -c "My Creta" status     # pick a car (required when the account has several
 hkc -v status                # show API calls (never secrets)
 ```
 
+### Shell completions and man page
+
+`hkc` prints its own tab-completion scripts (bash, zsh, fish, elvish,
+PowerShell) and manual page:
+
+```sh
+# zsh (add `fpath=(~/.zfunc $fpath)` before `compinit` in ~/.zshrc)
+mkdir -p ~/.zfunc && hkc completions zsh > ~/.zfunc/_hkc
+
+# bash
+mkdir -p ~/.local/share/bash-completion/completions
+hkc completions bash > ~/.local/share/bash-completion/completions/hkc
+
+# fish
+hkc completions fish > ~/.config/fish/completions/hkc.fish
+
+# man page
+mkdir -p ~/.local/share/man/man1 && hkc man > ~/.local/share/man/man1/hkc.1
+```
+
 Remote start accepts temperatures from 14 to 29.5 °C in 0.5 steps and
 durations of 1 to 10 minutes; anything else is rejected before you are asked
 to confirm.

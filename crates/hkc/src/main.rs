@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory as _, Parser, Subcommand};
 use hkconnect::{
     Brand, Celsius, Client, ClimateOptions, CommandId, CommandStatus, Config, Credentials,
     Destination, Vehicle,
@@ -151,6 +151,18 @@ enum Command {
     Login,
     /// Delete the saved session.
     Logout,
+    /// Print a shell completion script.
+    ///
+    /// zsh:  hkc completions zsh > ~/.zfunc/_hkc  (with ~/.zfunc in fpath)
+    /// bash: hkc completions bash > ~/.local/share/bash-completion/completions/hkc
+    /// fish: hkc completions fish > ~/.config/fish/completions/hkc.fish
+    #[command(verbatim_doc_comment)]
+    Completions {
+        /// The shell to generate completions for.
+        shell: clap_complete::Shell,
+    },
+    /// Print the manual page (roff), e.g. `hkc man > hkc.1`.
+    Man,
 }
 
 #[derive(clap::Args)]
@@ -166,6 +178,23 @@ struct Wait {
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
+    // These need no account, config or network.
+    match &cli.command {
+        Command::Completions { shell } => {
+            clap_complete::generate(*shell, &mut Cli::command(), "hkc", &mut std::io::stdout());
+            return ExitCode::SUCCESS;
+        }
+        Command::Man => {
+            return match clap_mangen::Man::new(Cli::command()).render(&mut std::io::stdout()) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        _ => {}
+    }
     init_logging(cli.verbose);
     match run(cli).await {
         Ok(code) => code,
@@ -390,7 +419,9 @@ fn prepare<'a>(command: &'a Command, car: &Vehicle) -> Result<Request<'a>> {
             )?;
             (Action::Navigate(destination), wait, "Send destination")
         }
-        _ => unreachable!("reads, login, logout and vehicles are handled before sending"),
+        _ => unreachable!(
+            "reads, login, logout, vehicles, completions and man are handled before sending"
+        ),
     };
     Ok(Request {
         action,
@@ -653,6 +684,29 @@ mod tests {
     #[test]
     fn cli_definition_is_valid() {
         super::Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn generates_completions_for_every_shell() {
+        use clap::ValueEnum as _;
+        for shell in clap_complete::Shell::value_variants() {
+            let mut out = Vec::new();
+            clap_complete::generate(*shell, &mut super::Cli::command(), "hkc", &mut out);
+            let script = String::from_utf8(out).unwrap();
+            assert!(script.contains("hkc"), "{shell}: no command name");
+            assert!(script.contains("status"), "{shell}: no subcommands");
+        }
+    }
+
+    #[test]
+    fn renders_the_man_page() {
+        let mut out = Vec::new();
+        clap_mangen::Man::new(super::Cli::command())
+            .render(&mut out)
+            .unwrap();
+        let page = String::from_utf8(out).unwrap();
+        assert!(page.starts_with(".ie") || page.contains(".TH"));
+        assert!(page.contains("hkc"));
     }
 
     #[test]

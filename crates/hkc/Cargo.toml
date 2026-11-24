@@ -14,6 +14,8 @@ readme = "README.md"
 [dependencies]
 anyhow = "1.0.105"
 clap = { version = "4.6.9", features = ["derive", "env"] }
+clap_complete = "4.6.12"
+clap_mangen = "0.3.4"
 directories = "6.0.0"
 hkconnect = { version = "0.1.1", path = "../hkconnect" }
 jiff = "1.0.2"

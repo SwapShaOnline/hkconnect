@@ -9,6 +9,11 @@ library and the `hkc` CLI are versioned together.
 
 ## [Unreleased]
 
+### Added
+
+- `hkc completions <shell>` prints a tab-completion script for bash, zsh,
+  fish, elvish or PowerShell, and `hkc man` prints the manual page.
+
 ### Changed
 
 - Docs: remote start with climate (car confirmed in about 33 s) and stop
