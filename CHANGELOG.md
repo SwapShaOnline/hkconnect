@@ -9,6 +9,12 @@ library and the `hkc` CLI are versioned together.
 
 ## [Unreleased]
 
+### Changed
+
+- Docs: remote start with climate (car confirmed in about 33 s) and stop
+  (about 15 s, with the PIN control token) are now verified on a 2024
+  Hyundai Creta.
+
 ## [0.1.1] - 2026-11-23
 
 ### Added

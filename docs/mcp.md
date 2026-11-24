@@ -14,8 +14,8 @@ It runs in two ways:
 
 > **Read this first.** This is unofficial software using the same servers as
 > the official app, with your account. Remote commands act on a real car;
-> only lock has been verified on one so far (see the README's support
-> table). Anyone who can call the server's
+> lock, remote start and stop have been verified on one so far (see the
+> README's support table). Anyone who can call the server's
 > command tools can do what the tools allow, so keep the password strong,
 > keep unlock and remote start off unless you need them, and set them to
 > "Needs approval" in Claude.

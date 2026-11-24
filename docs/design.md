@@ -163,7 +163,8 @@ Key choices (builder's calls, made here):
 
 ## Open questions / to verify live
 
-- Does stop-engine need the control token on India non-CCS2? (Library says
-  yes; start says no.) Verify when the owner approves a live test.
+- ~~Does stop-engine need the control token on India non-CCS2?~~ Resolved
+  2026-11-24: start (access token only) and stop (with the control token)
+  both work on the Creta.
 - Do hazard/horn work on non-CCS2 India cars?
 - Exact meaning of some status fields (e.g. `airTemp.value: "00H"` while off).

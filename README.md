@@ -31,7 +31,8 @@ Hyundai Bluelink India and Kia Connect India connected cars.
 | Hyundai India and Kia India, older (non-CCS2) protocol | Supported |
 | Reads: vehicles, status, location, info, trips | Verified on a real car (2024 Hyundai Creta, petrol, automatic) |
 | Lock | Verified on a real car (2024 Hyundai Creta): confirmed by the car in about 30 s |
-| Unlock, remote start with climate, stop | Experimental: implemented to match the reference implementation and tested against a fake server; not yet verified on a real car |
+| Remote start with climate, stop | Verified on a real car (2024 Hyundai Creta): start confirmed in about 33 s, stop in about 15 s |
+| Unlock | Experimental: implemented to match the reference implementation and tested against a fake server; not yet verified on a real car |
 | Valet mode, send destination to navigation | Experimental: as above |
 | Hazard lights / horn | Experimental: as above, and the endpoint may not exist on non-CCS2 cars |
 | Newer "CCS2" cars | Not supported: status and remote commands return a clear error |

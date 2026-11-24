@@ -33,6 +33,8 @@ session, so after the first call each read is a single request.
 | Command | Accepted → car confirmed |
 |---|---|
 | Lock | 30 s (one run, 2026-11-23) |
+| Remote start with climate | 33 s (one run, 2026-11-24) |
+| Stop | 15 s (one run, 2026-11-24) |
 
 Commands are dominated by the car's cellular modem waking up and replying;
 the client's own overhead is a few hundred milliseconds. Other commands have
