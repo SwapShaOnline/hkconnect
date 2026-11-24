@@ -17,9 +17,10 @@ Hyundai Bluelink India and Kia Connect India connected cars.
 | [`hkc`](crates/hkc) | Command-line app built on the library |
 | [`hkc-mcp`](crates/hkc-mcp) | MCP server so Claude can read and control the car ([setup guide](docs/mcp.md)) |
 
-An agent skill, [`skills/hkconnect-car`](skills/hkconnect-car/SKILL.md),
+An agent skill, [`skills/hkconnect`](skills/hkconnect/SKILL.md),
 tells Claude Code and other agents when and how to use `hkc-mcp` (or `hkc`)
-safely. To install it, copy the folder into `~/.claude/skills/`.
+safely. To install it, copy the folder into `~/.claude/skills/`; in Claude
+Code you can then also call it directly with `/hkconnect`.
 
 > **Disclaimer.** This project is not affiliated with, endorsed by, or
 > supported by Hyundai Motor Company, Kia Corporation, or their Indian
