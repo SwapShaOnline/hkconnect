@@ -9,6 +9,13 @@ library and the `hkc` CLI are versioned together.
 
 ## [Unreleased]
 
+### Changed
+
+- `hkc valet` and the MCP `set_valet_mode` tool return as soon as the
+  command is sent (outcome `sent`, exit code 0), with a note to check the
+  car's screen. Hyundai's server never reports a result for valet mode, so
+  they used to wait about 90 s and end with "unknown" and an error.
+
 ## [0.1.5] - 2026-11-24
 
 ### Removed

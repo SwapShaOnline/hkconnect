@@ -53,7 +53,7 @@ server as described in the [setup guide](docs/mcp.md).
 | Remote start with climate, stop | Verified on a real car (2024 Hyundai Creta): start confirmed in about 33 s, stop in about 15 s |
 | Unlock | Verified on a real car (2024 Hyundai Creta): confirmed by the car in about 12 s |
 | Send destination to navigation | Verified on a real car (2024 Hyundai Creta): confirmed by the car in about 24 s |
-| Valet mode | Works on a real car (2024 Hyundai Creta): on and off both took effect, but the server never reports the result, so `hkc` ends with "unknown" after waiting; check the car's screen |
+| Valet mode | Works on a real car (2024 Hyundai Creta): on and off both took effect, but the server never reports the result, so `hkc valet` returns as soon as the command is sent; check the car's screen |
 | Hazard lights / horn | Experimental: implemented to match the reference implementation and tested against a fake server; not yet verified on a real car, and the endpoint may not exist on non-CCS2 cars |
 | Newer "CCS2" cars | Not supported: status and remote commands return a clear error |
 | EV features (charging, charge limits, schedules) | Not implemented |
@@ -192,7 +192,7 @@ hkc start -t 18 --defrost --rear-defrost --yes
 hkc stop                     # needs HKC_PIN
 hkc hazard                   # flash the hazard lights; needs HKC_PIN; experimental
 hkc hazard --horn            # with the horn; asks for confirmation
-hkc valet on                 # valet mode on/off; asks for confirmation; needs HKC_PIN; result not reported (see Support)
+hkc valet on                 # valet mode on/off; asks for confirmation; needs HKC_PIN; returns once sent, check the car (see Support)
 hkc navigate --help          # send a destination to the car's navigation; asks for confirmation; needs HKC_PIN
 
 hkc bench                    # API latency, read-only (see docs/performance.md)
