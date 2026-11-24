@@ -1,5 +1,0 @@
-# Keep the Docker build context small (and secrets out of it).
-target/
-.git/
-.claude/
-**/.env

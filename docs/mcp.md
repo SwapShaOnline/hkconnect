@@ -55,8 +55,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/SwapShaOnline/hkco
 With Rust 1.89 or newer: `cargo binstall hkc-mcp` (prebuilt) or
 `cargo install hkc-mcp` (from source), or from a checkout: `cargo build --release -p hkc-mcp` (the binary is
 `target/release/hkc-mcp`). A container image can be built with
-`crates/hkc-mcp/deploy/Dockerfile` (see [Docker](#docker)), and
-[Railway](railway.md) can host it for you.
+`crates/hkc-mcp/deploy/Dockerfile` (see [Docker](#docker)).
 
 ## 2. Configure your Bluelink account
 
@@ -202,10 +201,6 @@ Custom connectors added on claude.ai are called **from Anthropic's servers**,
 so `hkc-mcp serve` needs a public **https** URL. It speaks plain HTTP on a
 local port; put a TLS-terminating tunnel or reverse proxy in front.
 
-> **No server of your own?** [Deploy it on Railway](railway.md) in a few
-> clicks instead: the port, public URL, proxy and password come from the
-> template's variables, and sections 5.1 to 5.2 are done for you.
-
 ### 5.1 Set the sign-in password
 
 Claude will send you to a sign-in page on your server the first time you
@@ -219,14 +214,6 @@ hkc-mcp set-password
 It is stored only as an Argon2id hash in `mcp-oauth.json` in the data
 directory (mode 0600). `serve` refuses to start without one. For scripts and
 containers: `hkc-mcp set-password --password-stdin`.
-
-Or set `HKC_MCP_PASSWORD` in `serve`'s environment (useful where you have
-no shell, such as [Railway](railway.md)). On every start `serve` compares it
-with the stored hash: if none is stored it is stored; if it matches nothing
-changes; if it differs, the stored password is replaced and every token is
-revoked, as `set-password` does, and the log says so (never the value). So
-while the variable is set it *is* the password; remove it to go back to
-`set-password`.
 
 ### 5.2 Run the server
 
@@ -307,11 +294,6 @@ streams server-sent events without buffering, which `/mcp` needs.
   (launchd agent).
 
 #### Docker
-
-Prebuilt images for amd64 and arm64 are published as
-`ghcr.io/swapshaonline/hkc-mcp` (tags: version, `major.minor`, `latest`);
-use that in place of `hkc-mcp` below to skip the build. Instead of the
-`set-password` step you can put `HKC_MCP_PASSWORD` in `hkc-mcp.env`.
 
 ```sh
 docker build -f crates/hkc-mcp/deploy/Dockerfile -t hkc-mcp .
@@ -448,10 +430,9 @@ A flag wins over the environment, which wins over the `.env` file.
 | `HKC_MCP_REFRESH_MINUTES` | `10` | Minimum minutes between live refreshes of one car (0 = no limit) |
 | `HKC_MCP_COMMAND_WAIT_SECONDS` | `90` | How long commands wait for the car (1–170) |
 | `HKC_MCP_DATA_DIR` | platform data dir | Session, OAuth state, audit log |
-| `HKC_MCP_PASSWORD` | none | `serve`: the sign-in password, stored (hashed) at startup; a changed value replaces the old one and revokes all tokens |
-| `HKC_MCP_LISTEN` | `127.0.0.1:8787` | `serve`: listen address (on Railway, `0.0.0.0:$PORT` wins) |
-| `HKC_MCP_PUBLIC_URL` | (required for `serve`; on Railway `https://$RAILWAY_PUBLIC_DOMAIN`) | Public https origin |
-| `HKC_MCP_TRUST_PROXY` | `false` (on Railway `true`, from any peer) | Use `X-Forwarded-For` (from loopback peers) for rate limiting |
+| `HKC_MCP_LISTEN` | `127.0.0.1:8787` | `serve`: listen address |
+| `HKC_MCP_PUBLIC_URL` | (required for `serve`) | Public https origin |
+| `HKC_MCP_TRUST_PROXY` | `false` | Use `X-Forwarded-For` (from loopback peers) for rate limiting |
 | `HKC_MCP_TRUSTED_PROXIES` | none | More peers whose `X-Forwarded-For` is believed (addresses/CIDRs); implies `HKC_MCP_TRUST_PROXY` |
 | `HKC_MCP_ALLOW_DCR` | `false` | Enable `/register` |
 | `HKC_MCP_ALLOWED_CLIENTS` | any (warning at startup) | Only these OAuth client ids; strongly recommended |
