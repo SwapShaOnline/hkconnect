@@ -1,7 +1,7 @@
 {
   "name": "hkconnect",
   "displayName": "hkconnect (Hyundai/Kia India car)",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Read and control your Hyundai Bluelink India or Kia Connect India car from Claude: status, location, trips, lock and remote start, through the hkc-mcp server. Install hkc-mcp first.",
   "author": {
     "name": "SwapShaOnline",
