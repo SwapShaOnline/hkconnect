@@ -9,6 +9,8 @@ library and the `hkc` CLI are versioned together.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-24
+
 ### Added
 
 - `hkc completions <shell>` prints a tab-completion script for bash, zsh,
@@ -146,6 +148,7 @@ Initial release.
   records both and checks them); and `hkc` keeps a single `session.json` per
   machine, so switching accounts or brands logs in again.
 
-[Unreleased]: https://github.com/SwapShaOnline/hkconnect/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/SwapShaOnline/hkconnect/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/SwapShaOnline/hkconnect/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/SwapShaOnline/hkconnect/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SwapShaOnline/hkconnect/releases/tag/v0.1.0
