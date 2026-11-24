@@ -176,6 +176,13 @@ the Bluelink password in this file. Restart Claude Desktop.
 claude mcp add car -- "$(which hkc-mcp)" stdio
 ```
 
+Optionally, install the agent skill so Claude knows when to use these tools,
+to report how old the data is, and never to resend a command:
+
+```sh
+cp -R skills/hkconnect-car ~/.claude/skills/   # from a checkout of this repo
+```
+
 ## 5. Remote use: claude.ai and the mobile apps
 
 Custom connectors added on claude.ai are called **from Anthropic's servers**,

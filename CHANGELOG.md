@@ -13,6 +13,10 @@ library and the `hkc` CLI are versioned together.
 
 - `hkc completions <shell>` prints a tab-completion script for bash, zsh,
   fish, elvish or PowerShell, and `hkc man` prints the manual page.
+- An agent skill, `skills/hkconnect-car/SKILL.md`, that tells Claude Code
+  and other agents when and how to use `hkc-mcp` (or `hkc`): report how old
+  the data is, refresh sparingly, send commands once and check rather than
+  resend.
 
 ### Changed
 
