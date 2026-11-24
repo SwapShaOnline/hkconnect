@@ -9,6 +9,14 @@ library and the `hkc` CLI are versioned together.
 
 ## [Unreleased]
 
+### Added
+
+- A Claude Code plugin: `/plugin install hkconnect --marketplace
+  SwapShaOnline/hkconnect` adds the `hkc-mcp` server and the `hkconnect`
+  skill in one step (`hkc-mcp` must be installed first).
+- `server.json` for listing `hkc-mcp` in the MCP Registry, and the
+  `mcp-name:` line in the README that the registry checks on crates.io.
+
 ## [0.1.2] - 2026-11-24
 
 ### Added

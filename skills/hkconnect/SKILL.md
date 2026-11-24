@@ -15,9 +15,11 @@ supported. Newer CCS2 cars, other regions and EV charging features are not.
 
 ## Which interface to use
 
-1. **MCP tools** (preferred). The server is usually registered as `car`, so
-   tools may appear as `mcp__car__get_status` and so on. The tool names below
-   are the bare names.
+1. **MCP tools** (preferred). The server is usually registered as `car`. The
+   tool names below are the bare names; your agent adds a prefix that depends
+   on how the server was installed (for example `mcp__car__get_status` when
+   added by hand, or a `plugin` prefix when it comes from the hkconnect
+   plugin).
 2. **`hkc` CLI**, only if the MCP tools are not available but `hkc` is
    installed (`command -v hkc`). Always pass `--json`.
 3. **Neither** → see [Setup](#setup). Do not try to call the Bluelink API
@@ -170,7 +172,11 @@ In short, for Claude Code or Claude Desktop on the same computer:
    Let the user type their password and PIN themselves. Don't ask for them
    in chat, and never write them into MCP config JSON, shell history or the
    repository.
-3. Register it: `claude mcp add car -- "$(which hkc-mcp)" stdio`, then
+3. Register it. In Claude Code, the plugin adds the server and this skill in
+   one step: `/plugin install hkconnect --marketplace SwapShaOnline/hkconnect`.
+   If the plugin's server fails to start because `hkc-mcp` isn't on the
+   agent's `PATH`, or in other agents, add it with its full path instead
+   (Claude Code: `claude mcp add car -- "$(which hkc-mcp)" stdio`), then
    restart the agent.
 4. Optional, riskier tools: `HKC_MCP_ENABLE=unlock,start_climate`. Recommend
    setting those tools to "ask before use" in the agent's permission

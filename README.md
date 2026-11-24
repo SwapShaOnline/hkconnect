@@ -19,8 +19,20 @@ Hyundai Bluelink India and Kia Connect India connected cars.
 
 An agent skill, [`skills/hkconnect`](skills/hkconnect/SKILL.md),
 tells Claude Code and other agents when and how to use `hkc-mcp` (or `hkc`)
-safely. To install it, copy the folder into `~/.claude/skills/`; in Claude
-Code you can then also call it directly with `/hkconnect`.
+safely.
+
+**Claude Code in one step.** With `hkc-mcp` installed (see [Install](#install))
+and your login in its [`.env` file](#configuration), this adds the skill and
+the MCP server together (Claude Code 2.1.275 or later):
+
+```
+/plugin install hkconnect --marketplace SwapShaOnline/hkconnect
+```
+
+Other agents: copy `skills/hkconnect` into their skills folder and add the
+server as described in the [setup guide](docs/mcp.md).
+
+- MCP Registry name: `mcp-name: io.github.SwapShaOnline/hkc-mcp`
 
 > **Disclaimer.** This project is not affiliated with, endorsed by, or
 > supported by Hyundai Motor Company, Kia Corporation, or their Indian

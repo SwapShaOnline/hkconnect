@@ -1,0 +1,15 @@
+{
+  "name": "hkconnect",
+  "description": "Plugins from the hkconnect project: Hyundai Bluelink India / Kia Connect India for Claude.",
+  "owner": {
+    "name": "SwapShaOnline",
+    "url": "https://github.com/SwapShaOnline"
+  },
+  "plugins": [
+    {
+      "name": "hkconnect",
+      "source": "./",
+      "description": "Hyundai Bluelink India / Kia Connect India: the hkconnect skill plus the hkc-mcp server (install hkc-mcp first)."
+    }
+  ]
+}
