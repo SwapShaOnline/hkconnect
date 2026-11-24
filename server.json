@@ -23,12 +23,12 @@
     "url": "https://github.com/SwapShaOnline/hkconnect",
     "source": "github"
   },
-  "version": "0.1.4",
+  "version": "0.1.5",
   "packages": [
     {
       "registryType": "cargo",
       "identifier": "hkc-mcp",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "transport": {
         "type": "stdio"
       },
