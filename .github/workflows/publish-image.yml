@@ -7,7 +7,8 @@
 # Prereleases are skipped by release.yml.
 #
 # Tags pushed: the version (e.g. 0.2.0), major.minor (0.2) and `latest`.
-# The Railway template (docs/railway.md) deploys `latest`.
+# Optional for Railway: the template builds from the repository's
+# Dockerfile (so deployers get update notifications); see docs/railway.md.
 #
 # Uses the workflow's GITHUB_TOKEN (packages: write); no stored secret.
 # The package is private on its first push: make it public once in the

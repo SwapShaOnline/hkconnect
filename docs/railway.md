@@ -21,24 +21,25 @@ controls a real car.
 <!-- TEMPLATE_CODE is a placeholder until the template is published; see
      "For the maintainer" below. -->
 
-The template runs the prebuilt image `ghcr.io/swapshaonline/hkc-mcp:latest`
-with a volume at `/data` and asks for these variables:
+The template builds this repository's
+[`crates/hkc-mcp/deploy/Dockerfile`](../crates/hkc-mcp/deploy/Dockerfile)
+(the first build compiles from source and takes several minutes), adds a
+volume at `/data`, and asks for these variables:
 
 | Variable | What to enter |
 |---|---|
 | `HKC_USERNAME` | Your Bluelink / Kia Connect email |
 | `HKC_PASSWORD` | Your Bluelink / Kia Connect password |
 | `HKC_PIN` | The 4-digit PIN from the app (needed for stop, hazard, valet, destination) |
-| `HKC_BRAND` | `hyundai` or `kia` |
-| `HKC_MCP_PASSWORD` | A **new** password (12+ characters; a passphrase of several words is easiest) that you'll type on your server's sign-in page when Claude connects. Not your Bluelink password. |
+| `HKC_BRAND` | `hyundai` (default) or `kia` |
 | `HKC_MCP_ENABLE` | Optional extra tools, e.g. `unlock,start_climate` (see [docs/mcp.md](mcp.md), section 3). Leave empty for the safe defaults. |
 
-The template also sets, and you should leave alone:
+The template also sets:
 
 | Variable | Value | Why |
 |---|---|---|
-| `HKC_MCP_DATA_DIR` | `/data` | Where the volume is mounted |
-| `RAILWAY_RUN_UID` | `0` | Railway mounts volumes owned by root; the image's own user couldn't write to it |
+| `HKC_MCP_PASSWORD` | a random 32-character value, generated at deploy | The password for your server's sign-in page (see [section 2](#2-add-it-to-claude)). You may replace it with your own (12+ characters); it is not your Bluelink password. |
+| `RAILWAY_RUN_UID` | `0` | Railway mounts volumes owned by root; the image's own user couldn't write to it. Leave it. |
 
 You don't need to set a port, a public URL or proxy settings: on Railway
 `hkc-mcp` listens on `0.0.0.0:$PORT`, uses `https://$RAILWAY_PUBLIC_DOMAIN`
@@ -62,8 +63,11 @@ header.
 1. On claude.ai: **Settings → Connectors → Add custom connector**.
 2. Name: e.g. "Car". URL: `https://YOUR-SERVICE.up.railway.app/mcp`.
    Leave the OAuth fields empty.
-3. Click **Connect**, check the addresses on the sign-in page are Claude's
-   (`claude.ai` or `claude.com`), enter your `HKC_MCP_PASSWORD` and allow.
+3. Click **Connect**. On the sign-in page, check the addresses are
+   Claude's (`claude.ai` or `claude.com`). For the password, copy
+   `HKC_MCP_PASSWORD` from the service's **Variables** tab on Railway
+   (click the eye icon, then copy), paste it and allow. Keep it secret:
+   with it, anyone can connect to your car through this server.
 4. Set the tool permissions; anything that unlocks or starts the car
    should be **"Needs approval"**.
 
@@ -86,7 +90,9 @@ service; your connection stays signed in. Details are in
   connector in Claude.
 - **Sign everyone out:** change `HKC_MCP_PASSWORD`, or run
   `hkc-mcp revoke-all` in the service's shell.
-- **Updates:** redeploy the service to pull the newest `latest` image.
+- **Updates:** Railway tells you when this repository's `main` changes
+  (the template is built from it); accept the update, or redeploy, to
+  rebuild with the new code.
 
 The volume keeps the Bluelink session, the OAuth state (password hash and
 token hashes) and the audit log `mcp-audit.jsonl` across restarts and
@@ -102,28 +108,57 @@ trust. Set `HKC_MCP_TRUST_PROXY=false` (or list addresses in
 
 ## For the maintainer: publishing the template
 
-These steps are done once, from the maintainer's Railway account:
+These steps are done once, from the maintainer's Railway account
+(**Workspace → Templates → New Template**). The template is built from the
+GitHub repository rather than the ghcr.io image because only
+repository-based templates notify deployers of updates.
 
-1. Make the GitHub Container Registry package
-   `ghcr.io/swapshaonline/hkc-mcp` **public** (GitHub → your packages →
-   hkc-mcp → Package settings → Change visibility). It is pushed by the
-   release workflow (`.github/workflows/publish-image.yml`) on every
-   release tag, and is private until changed.
-2. On Railway: **Templates → New template**. Add a service with source
-   **Docker image** `ghcr.io/swapshaonline/hkc-mcp:latest`.
-3. Variables: `HKC_USERNAME`, `HKC_PASSWORD`, `HKC_PIN`, `HKC_MCP_PASSWORD`
-   (required, no default), `HKC_BRAND` (default `hyundai`),
-   `HKC_MCP_ENABLE` (optional, empty), `HKC_MCP_DATA_DIR=/data`,
-   `RAILWAY_RUN_UID=0`. Add descriptions from the table above.
-4. Add a volume mounted at `/data`. Enable a public domain (HTTP, Railway
-   picks the port from `$PORT`).
-5. Settings: healthcheck path `/healthz`, restart policy "on failure", one
-   replica (the OAuth state is a file on the volume).
-6. Publish, and replace `TEMPLATE_CODE` in the button above (and in
-   `README.md`) with the template's code.
+**Service**
 
-Building from the repository instead of the image also works: Railway
-picks up `railway.json` at the repository root, which points at
-`crates/hkc-mcp/deploy/Dockerfile` and sets the same healthcheck. That
-compiles from source on each deploy (several minutes), so the image is the
-default.
+- Source: GitHub repository `SwapShaOnline/hkconnect`, branch `main`, root
+  directory empty (the repository root: the Dockerfile copies the whole
+  workspace).
+- Build: Railway reads [`railway.json`](../railway.json) from the
+  repository root: Dockerfile builder with
+  `crates/hkc-mcp/deploy/Dockerfile`, rebuilds only when `crates/`,
+  `Cargo.toml`, `Cargo.lock` or the Dockerfile change, healthcheck
+  `/healthz` (60 s), restart on failure (10 retries). Nothing to enter.
+- Service name: `hkc-mcp`.
+
+**Variables** (name = default; description shown to the deployer)
+
+| Name | Default | Description |
+|---|---|---|
+| `HKC_USERNAME` | (empty, required) | Your Bluelink / Kia Connect email. |
+| `HKC_PASSWORD` | (empty, required) | Your Bluelink / Kia Connect password. Stored only in this service's variables. |
+| `HKC_PIN` | (empty, optional) | The 4-digit PIN from the app; needed for stop climate, hazard lights, valet mode and sending a destination. |
+| `HKC_BRAND` | `hyundai` | `hyundai` or `kia`. |
+| `HKC_MCP_PASSWORD` | `${{secret(32)}}` | Password for this server's sign-in page when you connect Claude. Generated for you: copy it from the Variables tab when Claude asks. Not your Bluelink password. 12+ characters if you set your own. |
+| `HKC_MCP_ENABLE` | (empty, optional) | Extra tools beyond the safe defaults, comma-separated, e.g. `unlock,start_climate`, or `all`. Leave empty unless you need them. |
+| `RAILWAY_RUN_UID` | `0` | Leave as is: Railway volumes are owned by root. |
+
+`HKC_MCP_DATA_DIR=/data` is already set by the image, so it isn't needed.
+
+**Volume:** mount path `/data` (holds the Bluelink session, the OAuth
+state and the audit log).
+
+**Networking:** public networking on, with a generated Railway domain
+(HTTP; Railway routes it to `$PORT`, which the server listens on). No TCP
+proxy. A custom domain works too; then also set `HKC_MCP_PUBLIC_URL` to
+`https://` plus that domain.
+
+**Deploy settings:** one replica (the OAuth state is a file on the
+volume); region is up to the deployer (Singapore is closest to India).
+
+Then publish, and replace `TEMPLATE_CODE` in the button above (and in
+`README.md` if a button is added there) with the template's code.
+
+### The ghcr.io image (optional)
+
+Releases also push a multi-arch image, `ghcr.io/swapshaonline/hkc-mcp`
+(`.github/workflows/publish-image.yml`). Railway doesn't need it: a
+service can be switched to **Docker image** source with
+`ghcr.io/swapshaonline/hkc-mcp:latest` to skip the build, at the cost of
+update notifications (then redeploy to pull a new `latest`). The package
+is private after its first push; make it public in its package settings
+for anyone to pull it.

@@ -2,7 +2,12 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "crates/hkc-mcp/deploy/Dockerfile"
+    "dockerfilePath": "crates/hkc-mcp/deploy/Dockerfile",
+    "watchPatterns": [
+      "crates/**",
+      "Cargo.toml",
+      "Cargo.lock"
+    ]
   },
   "deploy": {
     "healthcheckPath": "/healthz",
