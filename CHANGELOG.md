@@ -48,6 +48,10 @@ library and the `hkc` CLI are versioned together.
 
 ## [0.1.3] - 2026-11-24
 
+Tagged but never published: the release workflow failed before creating
+the GitHub Release, so nothing went to crates.io or Homebrew. These changes
+first shipped in 0.1.4.
+
 ### Added
 
 - A Claude Code plugin: `/plugin install hkconnect --marketplace
