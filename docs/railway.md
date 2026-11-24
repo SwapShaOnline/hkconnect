@@ -16,10 +16,7 @@ controls a real car.
 
 ## 1. Deploy
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/TEMPLATE_CODE)
-
-<!-- TEMPLATE_CODE is a placeholder until the template is published; see
-     "For the maintainer" below. -->
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cSgHE3)
 
 The template builds this repository's
 [`crates/hkc-mcp/deploy/Dockerfile`](../crates/hkc-mcp/deploy/Dockerfile)
@@ -108,8 +105,9 @@ trust. Set `HKC_MCP_TRUST_PROXY=false` (or list addresses in
 
 ## For the maintainer: publishing the template
 
-These steps are done once, from the maintainer's Railway account
-(**Workspace → Templates → New Template**). The template is built from the
+The template is live at <https://railway.com/deploy/cSgHE3>. These are the
+settings it was created with, from the maintainer's Railway account
+(**Workspace → Templates → New Template**), for reference when editing it. The template is built from the
 GitHub repository rather than the ghcr.io image because only
 repository-based templates notify deployers of updates.
 
@@ -136,22 +134,25 @@ repository-based templates notify deployers of updates.
 | `HKC_MCP_PASSWORD` | `${{secret(32)}}` | Password for this server's sign-in page when you connect Claude. Generated for you: copy it from the Variables tab when Claude asks. Not your Bluelink password. 12+ characters if you set your own. |
 | `HKC_MCP_ENABLE` | (empty, optional) | Extra tools beyond the safe defaults, comma-separated, e.g. `unlock,start_climate`, or `all`. Leave empty unless you need them. |
 | `RAILWAY_RUN_UID` | `0` | Leave as is: Railway volumes are owned by root. |
+| `PORT` | `8080` | Port the server listens on; matches the public HTTP proxy. Leave as is. |
 
 `HKC_MCP_DATA_DIR=/data` is already set by the image, so it isn't needed.
 
 **Volume:** mount path `/data` (holds the Bluelink session, the OAuth
 state and the audit log).
 
-**Networking:** public networking on, with a generated Railway domain
-(HTTP; Railway routes it to `$PORT`, which the server listens on). No TCP
+**Networking:** public networking on: an HTTP proxy to port 8080 (the
+`PORT` variable above, which the server listens on), with a generated
+Railway domain. No TCP
 proxy. A custom domain works too; then also set `HKC_MCP_PUBLIC_URL` to
 `https://` plus that domain.
 
 **Deploy settings:** one replica (the OAuth state is a file on the
 volume); region is up to the deployer (Singapore is closest to India).
 
-Then publish, and replace `TEMPLATE_CODE` in the button above (and in
-`README.md` if a button is added there) with the template's code.
+The template's deploy link is `https://railway.com/deploy/cSgHE3`, used by
+the buttons here and in `README.md`. It is not listed on Railway's template
+marketplace; **Publish to Marketplace** on the template page would list it.
 
 ### The ghcr.io image (optional)
 
