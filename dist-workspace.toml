@@ -11,9 +11,10 @@ ci = "github"
 installers = ["shell", "powershell", "homebrew"]
 # A GitHub repo to push Homebrew formulas to
 tap = "SwapShaOnline/homebrew-tap"
-# Publish jobs to run in CI: the Homebrew formulae, then our crates.io
-# workflow (.github/workflows/publish-crates.yml)
-publish-jobs = ["homebrew", "./publish-crates"]
+# Publish jobs to run in CI: the Homebrew formulae, our crates.io workflow
+# (.github/workflows/publish-crates.yml) and the hkc-mcp container image
+# (.github/workflows/publish-image.yml)
+publish-jobs = ["homebrew", "./publish-crates", "./publish-image"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in
@@ -24,3 +25,5 @@ install-updater = false
 # crates.io Trusted Publishing needs an OIDC token; nothing else is required
 [dist.github-custom-job-permissions]
 publish-crates = { id-token = "write", contents = "read" }
+# Pushing to ghcr.io needs packages: write
+publish-image = { packages = "write", contents = "read" }

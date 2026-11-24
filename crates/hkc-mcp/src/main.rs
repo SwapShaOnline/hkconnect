@@ -5,6 +5,7 @@
 //! hkc-mcp stdio                 # local: Claude Desktop / Claude Code
 //! hkc-mcp serve --listen 127.0.0.1:8787 --public-url https://car.example.com
 //! hkc-mcp set-password          # set/rotate the sign-in password (hashed)
+//!                               # (or set HKC_MCP_PASSWORD for `serve`)
 //! hkc-mcp revoke-all            # drop every issued token
 //! ```
 //!
@@ -14,6 +15,7 @@ mod audit;
 mod format;
 mod http;
 mod oauth;
+mod platform;
 mod policy;
 mod store;
 mod tools;
@@ -35,7 +37,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::audit::AuditLog;
 use crate::oauth::state::StateFile;
-use crate::oauth::{OAuth, OAuthConfig};
+use crate::oauth::{OAuth, OAuthConfig, PasswordSync};
 use crate::policy::Policy;
 use crate::store::{EnvFile, Store};
 use crate::tools::{CarServer, Settings};
@@ -102,17 +104,20 @@ enum Command {
         car: Car,
         /// Address to listen on. Keep it on loopback behind a tunnel or
         /// reverse proxy that terminates TLS
-        /// [env: `HKC_MCP_LISTEN`; default 127.0.0.1:8787].
+        /// [env: `HKC_MCP_LISTEN`; default 127.0.0.1:8787; on Railway
+        /// 0.0.0.0:`$PORT`].
         #[arg(long)]
         listen: Option<SocketAddr>,
         /// The public https origin clients use, e.g. `https://car.example.com`.
         /// The MCP endpoint is this URL followed by `/mcp`
-        /// [env: `HKC_MCP_PUBLIC_URL`].
+        /// [env: `HKC_MCP_PUBLIC_URL`; on Railway, by default
+        /// https://`$RAILWAY_PUBLIC_DOMAIN`].
         #[arg(long)]
         public_url: Option<String>,
         /// Trust `X-Forwarded-For` from the proxy in front for the client
         /// address (rate limiting). It is believed only from a loopback
-        /// peer, or one in --trusted-proxies [env: `HKC_MCP_TRUST_PROXY`=true].
+        /// peer, or one in --trusted-proxies [env: `HKC_MCP_TRUST_PROXY`=true;
+        /// on Railway, on and believed from any peer unless set to false].
         #[arg(long)]
         trust_proxy: bool,
         /// Besides loopback, proxy addresses or networks (comma-separated
@@ -169,16 +174,19 @@ where
 
 /// A boolean switch: the flag, else the named variable.
 fn switch(flag: bool, env: &EnvFile, name: &str) -> Result<bool> {
-    if flag {
-        return Ok(true);
-    }
+    Ok(flag || explicit_switch(env, name)?.unwrap_or(false))
+}
+
+/// The named boolean variable, or `None` when it is unset.
+fn explicit_switch(env: &EnvFile, name: &str) -> Result<Option<bool>> {
     match env
         .var(name)
         .map(|v| v.trim().to_ascii_lowercase())
         .as_deref()
     {
-        None | Some("0" | "false" | "no" | "off") => Ok(false),
-        Some("1" | "true" | "yes" | "on") => Ok(true),
+        None => Ok(None),
+        Some("0" | "false" | "no" | "off") => Ok(Some(false)),
+        Some("1" | "true" | "yes" | "on") => Ok(Some(true)),
         Some(_) => bail!("invalid {name}: use true or false"),
     }
 }
@@ -238,19 +246,8 @@ async fn run(cli: Cli, env: &EnvFile) -> Result<()> {
             allowed_clients,
         } => {
             init_logging(car.verbose);
-            let public_url = setting(public_url, env, "HKC_MCP_PUBLIC_URL")?
-                .context("set --public-url or HKC_MCP_PUBLIC_URL (e.g. https://car.example.com)")?;
-            let listen = setting(listen, env, "HKC_MCP_LISTEN")?
-                .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 8787)));
-            let mut config = OAuthConfig::new(&public_url)?;
-            config.trust_proxy = switch(trust_proxy, env, "HKC_MCP_TRUST_PROXY")?;
-            if let Some(list) = setting(trusted_proxies, env, "HKC_MCP_TRUSTED_PROXIES")? {
-                config.trusted_proxies = oauth::parse_cidrs(&list)
-                    .map_err(|e| anyhow::anyhow!("invalid HKC_MCP_TRUSTED_PROXIES: {e}"))?;
-                if !config.trusted_proxies.is_empty() {
-                    config.trust_proxy = true;
-                }
-            }
+            let (mut config, listen) =
+                network_config(public_url, listen, trust_proxy, trusted_proxies, env)?;
             config.allow_dcr = switch(allow_dcr, env, "HKC_MCP_ALLOW_DCR")?;
             let allowed_clients = setting(allowed_clients, env, "HKC_MCP_ALLOWED_CLIENTS")?;
             config.allowed_clients = allowed_clients.map(|list| {
@@ -275,9 +272,21 @@ async fn run(cli: Cli, env: &EnvFile) -> Result<()> {
                      in HKC_MCP_TRUSTED_PROXIES"
                 );
             }
-            let oauth = Arc::new(OAuth::new(config, StateFile::new(store.oauth_file())));
-            if !oauth.has_password().await? {
-                bail!("no sign-in password is set; run `hkc-mcp set-password` first");
+            let state = StateFile::new(store.oauth_file());
+            let on_railway = platform::railway(|name| env.var(name))?.is_some();
+            password_from_env(&state, env)
+                .await
+                .map_err(|e| data_dir_hint(e, on_railway))?;
+            let oauth = Arc::new(OAuth::new(config, state));
+            if !oauth
+                .has_password()
+                .await
+                .map_err(|e| data_dir_hint(e, on_railway))?
+            {
+                bail!(
+                    "no sign-in password is set; set HKC_MCP_PASSWORD or run \
+                     `hkc-mcp set-password` first"
+                );
             }
             let server = car_server(&car, &store, env)?;
             serve(oauth, server, listen).await
@@ -286,6 +295,12 @@ async fn run(cli: Cli, env: &EnvFile) -> Result<()> {
             password_stdin,
             keep_tokens,
         } => {
+            if env.var("HKC_MCP_PASSWORD").is_some() {
+                eprintln!(
+                    "warning: HKC_MCP_PASSWORD is set; `serve` makes it the password again \
+                     on its next start (and signs every client out). Change or remove it too."
+                );
+            }
             let password = read_new_password(password_stdin)?;
             let state = StateFile::new(store.oauth_file());
             let revoked = oauth::set_password(&state, &password, !keep_tokens).await?;
@@ -305,6 +320,90 @@ async fn run(cli: Cli, env: &EnvFile) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// `serve`: the public URL, listen address and proxy trust, from the flags,
+/// the environment and, on Railway, the platform's variables.
+fn network_config(
+    public_url: Option<String>,
+    listen: Option<SocketAddr>,
+    trust_proxy: bool,
+    trusted_proxies: Option<String>,
+    env: &EnvFile,
+) -> Result<(OAuthConfig, SocketAddr)> {
+    let railway = platform::railway(|name| env.var(name))?;
+    let public_url = setting(public_url, env, "HKC_MCP_PUBLIC_URL")?
+        .or_else(|| railway.as_ref().and_then(|r| r.public_url.clone()))
+        .context(if railway.is_some() {
+            "set HKC_MCP_PUBLIC_URL, or generate a public domain for this Railway \
+             service (Settings > Networking)"
+        } else {
+            "set --public-url or HKC_MCP_PUBLIC_URL (e.g. https://car.example.com)"
+        })?;
+    // On Railway the platform picks the port (its proxy forwards
+    // only to $PORT), so it wins over HKC_MCP_LISTEN, which the
+    // image sets for plain Docker.
+    let listen = match (listen, railway.as_ref().and_then(|r| r.listen)) {
+        (Some(flag), _) => flag,
+        (None, Some(port)) => port,
+        (None, None) => setting(None, env, "HKC_MCP_LISTEN")?
+            .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 8787))),
+    };
+    let mut config = OAuthConfig::new(&public_url)?;
+    let trust_switch = explicit_switch(env, "HKC_MCP_TRUST_PROXY")?;
+    config.trust_proxy = trust_proxy || trust_switch.unwrap_or(false);
+    if let Some(list) = setting(trusted_proxies, env, "HKC_MCP_TRUSTED_PROXIES")? {
+        config.trusted_proxies = oauth::parse_cidrs(&list)
+            .map_err(|e| anyhow::anyhow!("invalid HKC_MCP_TRUSTED_PROXIES: {e}"))?;
+        if !config.trusted_proxies.is_empty() {
+            config.trust_proxy = true;
+        }
+    } else if railway.is_some() && trust_switch != Some(false) {
+        // Railway's edge proxy is the only way in from the internet
+        // and connects from addresses that aren't published, so its
+        // X-Forwarded-For is believed from any peer.
+        config.trust_proxy = true;
+        config.trusted_proxies =
+            oauth::parse_cidrs("0.0.0.0/0, ::/0").map_err(|e| anyhow::anyhow!("{e}"))?;
+    }
+    Ok((config, listen))
+}
+
+/// On Railway, a data directory the server may not write to is almost
+/// always the volume: Railway mounts volumes owned by root, and the image
+/// runs as an unprivileged user.
+fn data_dir_hint(e: anyhow::Error, on_railway: bool) -> anyhow::Error {
+    let denied = e.chain().any(|c| {
+        c.downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::PermissionDenied)
+    });
+    if on_railway && denied {
+        e.context(
+            "the data directory is not writable: Railway mounts volumes owned by root, so set \
+             the service variable RAILWAY_RUN_UID=0 (see docs/railway.md)",
+        )
+    } else {
+        e
+    }
+}
+
+/// `serve`: make `HKC_MCP_PASSWORD`, when set, the sign-in password (see
+/// [`oauth::sync_password`]). The value is never logged.
+async fn password_from_env(state: &StateFile, env: &EnvFile) -> Result<()> {
+    let Some(password) = env.var("HKC_MCP_PASSWORD") else {
+        return Ok(());
+    };
+    check_password_strength(&password).context("HKC_MCP_PASSWORD is not usable")?;
+    match oauth::sync_password(state, &password).await? {
+        PasswordSync::Set => tracing::info!("sign-in password set from HKC_MCP_PASSWORD"),
+        PasswordSync::Unchanged => {}
+        PasswordSync::Rotated { revoked } => tracing::warn!(
+            revoked,
+            "HKC_MCP_PASSWORD differs from the stored sign-in password: replaced it and \
+             revoked every token; clients must sign in again"
+        ),
+    }
+    Ok(())
 }
 
 fn credentials_from_env(env: &EnvFile) -> Result<Credentials> {
