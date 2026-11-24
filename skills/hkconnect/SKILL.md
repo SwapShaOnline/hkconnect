@@ -1,5 +1,5 @@
 ---
-name: hkconnect-car
+name: hkconnect
 description: Read and control the user's Hyundai or Kia car in India (Bluelink India / Kia Connect India) through the hkc-mcp server or the hkc command-line tool. Use when the user asks about their own car's state or wants to act on it, e.g. "is my car locked?", "where did I park?", "how much fuel is left?", "how far did I drive this week?", "lock the car", "start the AC", "send this place to my car's navigation", or asks to install or set up hkconnect, hkc or hkc-mcp.
 ---
 
