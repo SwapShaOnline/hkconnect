@@ -66,14 +66,14 @@ command results endpoint, usually after 10 to 40 seconds.
 
 | Capability | Method and path | Auth | hkconnect status | Notes |
 |---|---|---|---|---|
-| Lock / unlock (non-CCS2) | `POST v1/vehicles/{id}/control/door` | Access token | Lock: implemented, verified (2024 Creta, 2026-11-23). Unlock: implemented, unverified | `{action: "close" \| "open", deviceId}`. `Client::lock`, `Client::unlock`, `hkc lock`, `hkc unlock`. |
+| Lock / unlock (non-CCS2) | `POST v1/vehicles/{id}/control/door` | Access token | Lock: implemented, verified (2024 Creta, 2026-11-23). Unlock: implemented, verified (2024 Creta, 2026-11-24; confirmed in about 12 s) | `{action: "close" \| "open", deviceId}`. `Client::lock`, `Client::unlock`, `hkc lock`, `hkc unlock`. |
 | Lock / unlock (CCS2) | `POST v2/vehicles/{id}/ccs2/control/door` | Control token | Not implemented | hkconnect rejects every command for CCS2 cars with a clear error. |
 | Remote start with climate | `POST v1/vehicles/{id}/control/engine` | Access token | Implemented, verified (2024 Creta, 2026-11-24) | `{action: "start", hvacType: 1, options: {defrost, heating1, igniOnDuration}, tempCode, unit: "C"}`. 14 to 29.5 °C in 0.5 steps (`tempCode` is the step index in hex plus `H`), 1 to 10 minutes. `Client::start_climate`, `hkc start`. |
 | Stop remote start | `POST v2/vehicles/{id}/control/engine` | Control token | Implemented, verified (2024 Creta, 2026-11-24) | `{action: "stop"}`. `Client::stop_climate`, `hkc stop`. Works with the control token on a non-CCS2 car. |
 | Hazard lights | `POST v2/vehicles/{id}/ccs2/control/light` | Control token | Implemented, unverified | Experimental on non-CCS2 cars: the endpoint is under `ccs2/`. `Client::hazard_lights`, `hkc hazard`. |
 | Hazard lights and horn | `POST v2/vehicles/{id}/ccs2/control/hornlight` | Control token | Implemented, unverified | As above. `hkc hazard --horn`. |
-| Valet mode | `POST v2/vehicles/{id}/control/valet` | Control token | Implemented, unverified | `{action: "activate" \| "deactivate"}`. `Client::valet_mode`, `hkc valet`. |
-| Send destination | `POST v2/vehicles/{id}/location/routes` | Control token | Implemented, unverified | `{deviceID, poiInfoList}`. Sends a point of interest to the car's navigation. `Client::send_destination`, `hkc navigate`. |
+| Valet mode | `POST v2/vehicles/{id}/control/valet` | Control token | Implemented, works (2024 Creta, 2026-11-24); result not reported | `{action: "activate" \| "deactivate"}`. `Client::valet_mode`, `hkc valet`. On and off both took effect on the car, but the command never appears in `notifications/{id}/records`, so `wait_for` ends with `Unknown`. |
+| Send destination | `POST v2/vehicles/{id}/location/routes` | Control token | Implemented, verified (2024 Creta, 2026-11-24; confirmed in about 24 s) | `{deviceID, poiInfoList}`. Sends a point of interest to the car's navigation. `Client::send_destination`, `hkc navigate`. |
 | Windows | `POST v2/vehicles/{id}/control/windowcurtain` | Control token | Not implemented | Not in the Creta's capability profile. |
 
 ## EV charging

@@ -35,11 +35,11 @@ supported. Newer CCS2 cars, other regions and EV charging features are not.
 | `check_command` | Result of an earlier command by `command_id` | Use instead of resending |
 | `lock` | Lock the doors | Verified on a real car |
 | `stop_climate` | Stop a remote start | Needs the app PIN on the server; verified on a real car |
-| `send_destination` | Send a place to the car's navigation | Needs PIN; experimental |
-| `unlock` | Unlock the doors | Off by default; experimental |
+| `send_destination` | Send a place to the car's navigation | Needs PIN; verified on a real car |
+| `unlock` | Unlock the doors | Off by default; verified on a real car |
 | `start_climate` | Remote start with climate | Off by default; verified on a real car |
 | `hazard_lights` | Flash hazards, optionally `horn=true` | Off by default; needs PIN; experimental |
-| `set_valet_mode` | Valet mode `on=true/false` | Off by default; needs PIN; experimental |
+| `set_valet_mode` | Valet mode `on=true/false` | Off by default; needs PIN; works, but its outcome is always `unknown` (see below) |
 
 A tool that is turned off on the server is not listed at all. If the user
 asks for something whose tool you cannot see, say it is disabled and that the
@@ -97,10 +97,12 @@ the user which car, do not pick one.
      received it, **do not resend**: check status first.
 4. **"Sent" is not "done".** Never tell the user the car is locked, unlocked
    or running until the outcome is `succeeded` or a fresh status shows it.
-5. **Experimental commands** (`unlock`, `send_destination`,
-   `hazard_lights`, `set_valet_mode`) have not been verified on a real car;
-   `lock`, `start_climate` and `stop_climate` have. Mention that when you use one for the first time
-   in a conversation, and suggest the user check the car.
+5. **Experimental and unreported commands.** `hazard_lights` has not been
+   verified on a real car: mention that the first time you use it in a
+   conversation, and suggest the user check the car. `set_valet_mode` works,
+   but the server never reports its result, so its outcome is always
+   `unknown`: don't resend it, and ask the user to check the car's screen.
+   All other commands have been verified on a real car.
 
 Command arguments:
 
