@@ -146,12 +146,21 @@ from a version tag; nothing is published from a developer machine.
 2. Move the `[Unreleased]` entries in `CHANGELOG.md` under a new
    `## [X.Y.Z] - YYYY-MM-DD` heading.
 3. Run the quality gates, then commit (`Release vX.Y.Z`) and push to `main`.
-4. Tag and push the tag:
+4. Tag and push the tag right away, before anything else is merged:
 
    ```sh
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
+
+   With v0.1.3, a change to `.github/workflows/` reached `main` between the
+   release commit and the release job, and GitHub refused to create the
+   release (`HTTP 403: Resource not accessible by integration`). A test with
+   the same workflow token could create a release pointing at the new `main`
+   but not at the old release commit, and GitHub's response asked for the
+   `workflows` permission, which the workflow token does not have. Nothing
+   is published when this happens; release from the new `main` instead
+   (bump to the next version).
 
 Pushing the tag runs `.github/workflows/release.yml`, which:
 
