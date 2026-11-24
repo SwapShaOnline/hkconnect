@@ -3,9 +3,15 @@
 # Build from the repository root:
 #   docker build -f crates/hkc-mcp/deploy/Dockerfile -t hkc-mcp .
 #
-# Data (login session, OAuth state, audit log) lives in /data: mount a volume.
+# Data (login session, OAuth state, audit log) lives in /data: mount a volume
+# there (`-v hkc-mcp-data:/data`). There is deliberately no VOLUME line:
+# Railway refuses Dockerfiles that have one.
 # Configuration comes from environment variables (see docs/mcp.md); pass them
 # with --env-file. Docker's --env-file takes values literally.
+#
+# Prebuilt multi-arch images: ghcr.io/swapshaonline/hkc-mcp (see
+# docs/railway.md for running it on Railway, where PORT, the public URL and
+# the proxy are picked up automatically).
 
 FROM rust:1.89-slim-bookworm AS build
 WORKDIR /src
@@ -30,9 +36,10 @@ USER hkc
 # container, a proxy on the host connects from the Docker bridge (e.g.
 # 172.17.0.1), so set HKC_MCP_TRUSTED_PROXIES to that address (see
 # docs/mcp.md) rather than trusting everyone.
+#
+# On Railway, $PORT wins over HKC_MCP_LISTEN (see docs/railway.md).
 ENV HKC_MCP_DATA_DIR=/data \
     HKC_MCP_LISTEN=0.0.0.0:8787
-VOLUME ["/data"]
 EXPOSE 8787
 ENTRYPOINT ["hkc-mcp"]
 CMD ["serve"]

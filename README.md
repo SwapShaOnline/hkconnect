@@ -15,7 +15,7 @@ Hyundai Bluelink India and Kia Connect India connected cars.
 |---|---|
 | [`hkconnect`](crates/hkconnect) | Async library: login, session reuse, typed reads, remote commands |
 | [`hkc`](crates/hkc) | Command-line app built on the library |
-| [`hkc-mcp`](crates/hkc-mcp) | MCP server so Claude can read and control the car ([setup guide](docs/mcp.md)) |
+| [`hkc-mcp`](crates/hkc-mcp) | MCP server so Claude can read and control the car ([setup guide](docs/mcp.md), or [deploy on Railway](docs/railway.md)) |
 
 An agent skill, [`skills/hkconnect`](skills/hkconnect/SKILL.md),
 tells Claude Code and other agents when and how to use `hkc-mcp` (or `hkc`)

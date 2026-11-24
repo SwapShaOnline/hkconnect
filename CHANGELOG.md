@@ -18,9 +18,20 @@ library and the `hkc` CLI are versioned together.
   skill in one step (`hkc-mcp` must be installed first).
 - `server.json` for listing `hkc-mcp` in the MCP Registry, and the
   `mcp-name:` line in the README that the registry checks on crates.io.
+- `hkc-mcp serve` takes the sign-in password from `HKC_MCP_PASSWORD`: it is
+  hashed and stored at startup, and a changed value replaces the stored
+  password and revokes every token.
+- On Railway, `hkc-mcp serve` needs no flags: it listens on `0.0.0.0:$PORT`,
+  uses `https://$RAILWAY_PUBLIC_DOMAIN` as its public URL and trusts
+  Railway's proxy for client addresses. See `docs/railway.md` and the
+  "Deploy on Railway" button.
+- Releases publish a multi-arch (amd64, arm64) container image to
+  `ghcr.io/swapshaonline/hkc-mcp`.
 
 ### Changed
 
+- The Dockerfile no longer declares `VOLUME /data` (Railway refuses it);
+  mount a volume at `/data` as before.
 - Docs: unlock (car confirmed in about 12 s) and send destination (about
   24 s) are now verified on a 2024 Hyundai Creta. Valet mode works on the
   same car, but the server never reports its result, so `hkc valet` and

@@ -1,0 +1,80 @@
+# Builds the hkc-mcp container image for linux/amd64 and linux/arm64 and
+# pushes it to GitHub Container Registry as ghcr.io/swapshaonline/hkc-mcp.
+#
+# Called by the dist-generated release.yml as the custom publish job
+# "./publish-image" (see `publish-jobs` in dist-workspace.toml), after the
+# GitHub Release exists, so a tag that fails to release pushes no image.
+# Prereleases are skipped by release.yml.
+#
+# Tags pushed: the version (e.g. 0.2.0), major.minor (0.2) and `latest`.
+# Optional for Railway: the template builds from the repository's
+# Dockerfile (so deployers get update notifications); see docs/railway.md.
+#
+# Uses the workflow's GITHUB_TOKEN (packages: write); no stored secret.
+# The package is private on its first push: make it public once in the
+# package settings so Railway can pull it without credentials.
+name: Publish image
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/swapshaonline/hkc-mcp
+
+jobs:
+  publish:
+    name: Publish to ghcr.io
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Read the version from the release plan
+        id: version
+        env:
+          PLAN: ${{ inputs.plan }}
+        run: |
+          tag=$(jq -r '.announcement_tag' <<<"$PLAN")
+          version="${tag#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::unexpected release tag $tag"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/hkc-mcp/deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE }}:${{ steps.version.outputs.minor }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT OR Apache-2.0
+            org.opencontainers.image.description=hkc-mcp: remote MCP server for a Hyundai/Kia (India) car
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
