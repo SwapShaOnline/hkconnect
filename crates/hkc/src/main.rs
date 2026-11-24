@@ -108,7 +108,8 @@ enum Command {
         #[arg(long, requires = "trip")]
         route: bool,
     },
-    /// Turn valet mode on or off (needs your PIN; experimental).
+    /// Turn valet mode on or off (needs your PIN). Hyundai doesn't report
+    /// the result, so this returns once the command is sent: check the car.
     Valet {
         #[arg(value_parser = ["on", "off"])]
         state: String,
@@ -359,6 +360,15 @@ enum Action {
     Navigate(Destination),
 }
 
+impl Action {
+    /// Whether the server reports this command's result in the notification
+    /// records. Valet mode takes effect on the car but never appears there
+    /// (checked on a 2024 Creta), so waiting for it would always time out.
+    fn reports_result(&self) -> bool {
+        !matches!(self, Self::Valet { .. })
+    }
+}
+
 /// Check a remote command's options, then ask for confirmation where it
 /// matters. Nothing is sent here.
 fn prepare<'a>(command: &'a Command, car: &Vehicle) -> Result<Request<'a>> {
@@ -494,6 +504,10 @@ async fn await_outcome(
     json: bool,
 ) -> Result<ExitCode> {
     let Request { wait, label, .. } = *request;
+    if !request.action.reports_result() {
+        output::command_sent_unreported(label, id, json)?;
+        return Ok(ExitCode::SUCCESS);
+    }
     if wait.no_wait {
         output::command_sent(label, id, check, json)?;
         return Ok(ExitCode::SUCCESS);

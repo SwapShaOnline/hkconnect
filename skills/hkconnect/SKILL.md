@@ -41,7 +41,7 @@ supported. Newer CCS2 cars, other regions and EV charging features are not.
 | `unlock` | Unlock the doors | Off by default; verified on a real car |
 | `start_climate` | Remote start with climate | Off by default; verified on a real car |
 | `hazard_lights` | Flash hazards, optionally `horn=true` | Off by default; needs PIN; experimental |
-| `set_valet_mode` | Valet mode `on=true/false` | Off by default; needs PIN; works, but its outcome is always `unknown` (see below) |
+| `set_valet_mode` | Valet mode `on=true/false` | Off by default; needs PIN; works; returns outcome `sent`, never confirmed (see below) |
 
 A tool that is turned off on the server is not listed at all. If the user
 asks for something whose tool you cannot see, say it is disabled and that the
@@ -102,8 +102,8 @@ the user which car, do not pick one.
 5. **Experimental and unreported commands.** `hazard_lights` has not been
    verified on a real car: mention that the first time you use it in a
    conversation, and suggest the user check the car. `set_valet_mode` works,
-   but the server never reports its result, so its outcome is always
-   `unknown`: don't resend it, and ask the user to check the car's screen.
+   but the server never reports its result, so it returns outcome `sent`
+   at once: don't resend it, and ask the user to check the car's screen.
    All other commands have been verified on a real car.
 
 Command arguments:

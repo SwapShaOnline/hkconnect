@@ -231,6 +231,28 @@ pub fn command_sent(label: &str, id: &CommandId, check: &str, json: bool) -> Res
     Ok(())
 }
 
+/// A command whose result the server never reports (valet mode): say it was
+/// sent and that the car's screen is the only confirmation, instead of
+/// waiting for a result that never comes.
+pub fn command_sent_unreported(label: &str, id: &CommandId, json: bool) -> Result<()> {
+    if json {
+        return print_json(&unreported_json(label, id));
+    }
+    println!("{}", clean(&unreported_text(label, id)));
+    Ok(())
+}
+
+fn unreported_json(label: &str, id: &CommandId) -> serde_json::Value {
+    json!({ "command": label, "id": id, "status": "sent", "result_reported": false })
+}
+
+fn unreported_text(label: &str, id: &CommandId) -> String {
+    format!(
+        "{label}: sent (id {id}). Hyundai's server doesn't report a result for this \
+         command, so check the car's screen. Don't send it again to confirm."
+    )
+}
+
 /// In `--json` mode, announce on stderr, as one JSON line, that a command was
 /// accepted, before waiting for the car. The final result still goes to
 /// stdout; this line means the id is known even if the wait is killed.
@@ -449,6 +471,22 @@ mod tests {
         assert_eq!(full["route"].as_array().unwrap().len(), 500);
         assert!(full.get("route_points_total").is_none());
         assert!(lean.to_string().len() * 20 < full.to_string().len());
+    }
+
+    #[test]
+    fn unreported_command_says_sent_and_to_check_the_car() {
+        let id = CommandId::new("1fedaa50");
+        let j = unreported_json("Valet mode", &id);
+        assert_eq!(j["status"], "sent");
+        assert_eq!(j["result_reported"], false);
+        assert_eq!(j["id"], "1fedaa50");
+        let text = unreported_text("Valet mode", &id);
+        assert!(
+            text.starts_with("Valet mode: sent (id 1fedaa50)."),
+            "{text}"
+        );
+        assert!(text.contains("check the car's screen"), "{text}");
+        assert!(text.contains("Don't send it again"), "{text}");
     }
 
     #[test]

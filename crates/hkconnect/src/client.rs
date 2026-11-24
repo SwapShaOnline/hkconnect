@@ -385,6 +385,10 @@ impl Client {
 
     /// Turn valet mode on or off. Needs the PIN. While on, the car hides
     /// personal data on its screen and the app can track its use.
+    ///
+    /// The server never adds this command to the notification records (seen
+    /// on a 2024 Creta), so [`Client::wait_for`] ends with
+    /// [`CommandStatus::Unknown`] even when the car carried it out.
     pub async fn valet_mode(&self, vehicle: &Vehicle, on: bool) -> Result<CommandId> {
         require_legacy(vehicle)?;
         let path = format!(

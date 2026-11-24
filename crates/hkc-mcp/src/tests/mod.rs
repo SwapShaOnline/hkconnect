@@ -891,7 +891,7 @@ async fn ambiguous_send_failure_says_do_not_resend() {
 }
 
 #[tokio::test]
-async fn pin_commands_hazard_valet_destination_and_stop() {
+async fn pin_commands_hazard_destination_and_stop() {
     let backend = backend().await;
     mount_vehicles(&backend, fixture("vehicles")).await;
     let v2 = |s: &str| format!("/api/v2/spa/vehicles/{VEHICLE}{s}");
@@ -903,20 +903,13 @@ async fn pin_commands_hazard_valet_destination_and_stop() {
         1,
     )
     .await;
-    mount_command(&backend, "POST", &v2("/control/valet"), "c-valet", 1).await;
     mount_command(&backend, "POST", &v2("/location/routes"), "c-nav", 1).await;
     mount_command(&backend, "POST", &v2("/control/engine"), "c-stop", 1).await;
-    mount_records(
-        &backend,
-        &["c-horn", "c-valet", "c-nav", "c-stop"],
-        json!("success"),
-    )
-    .await;
-    let policy = Policy::from_lists(Some("hazard_lights,set_valet_mode"), None).unwrap();
+    mount_records(&backend, &["c-horn", "c-nav", "c-stop"], json!("success")).await;
+    let policy = Policy::from_lists(Some("hazard_lights"), None).unwrap();
     let mcp = connect(car_server(&backend, &policy, None)).await;
     for (tool, args, id) in [
         ("hazard_lights", json!({ "horn": true }), "c-horn"),
-        ("set_valet_mode", json!({ "on": true }), "c-valet"),
         (
             "send_destination",
             json!({ "name": "Office", "latitude": 12.9716, "longitude": 77.5946, "address": "MG Road" }),
@@ -930,6 +923,42 @@ async fn pin_commands_hazard_valet_destination_and_stop() {
         assert_eq!(data["command_id"], id, "{tool}");
         assert_eq!(data["outcome"], "succeeded", "{tool}");
     }
+}
+
+/// Hyundai's server never adds valet commands to the notification records
+/// (checked on a real car), so waiting for a result would always time out
+/// with "unknown". The tool reports the command as sent and does not poll.
+#[tokio::test]
+async fn valet_mode_is_reported_as_sent_without_waiting() {
+    let backend = backend().await;
+    mount_vehicles(&backend, fixture("vehicles")).await;
+    let valet = format!("/api/v2/spa/vehicles/{VEHICLE}/control/valet");
+    mount_command(&backend, "POST", &valet, "c-valet-on", 1).await;
+    Mock::given(method("GET"))
+        .and(path(format!("/api/v1/spa/notifications/{VEHICLE}/records")))
+        .respond_with(ok(envelope(json!([]), "x")))
+        .expect(0)
+        .mount(&backend)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("audit.jsonl");
+    let policy = Policy::from_lists(Some("set_valet_mode"), None).unwrap();
+    let mcp = connect(car_server(&backend, &policy, Some(&log))).await;
+    let started = std::time::Instant::now();
+    let result = call(&mcp, "set_valet_mode", json!({ "on": true })).await;
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "did not wait"
+    );
+    assert!(!is_error(&result));
+    let (summary, data) = parts(&result);
+    assert_eq!(data["command_id"], "c-valet-on");
+    assert_eq!(data["outcome"], "sent");
+    assert!(summary.contains("check the car's screen"), "{summary}");
+    assert!(summary.contains("Do NOT send"), "{summary}");
+    let audit = audit_lines(&log);
+    assert_eq!(audit[0]["outcome"], "sent_unreported");
+    assert_eq!(audit[0]["command_id"], "c-valet-on");
 }
 
 // ----- vehicle selection -----

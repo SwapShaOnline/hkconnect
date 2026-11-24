@@ -307,6 +307,13 @@ impl Action {
             Self::Navigate(_) => "Send destination",
         }
     }
+
+    /// Whether the server reports this command's result in the notification
+    /// records. Valet mode takes effect on the car but never appears there
+    /// (checked on a 2024 Creta), so waiting for it would always time out.
+    fn reports_result(&self) -> bool {
+        !matches!(self, Self::Valet { .. })
+    }
 }
 
 // ----- results -----
@@ -971,6 +978,10 @@ impl CarServer {
                 return failure(message);
             }
         };
+        if !action.reports_result() {
+            audit(Some(&car.vin), Some(id.as_str()), "sent_unreported", None);
+            return sent_unreported(label, &car.name, &id, started.elapsed().as_secs());
+        }
         let s = &self.backend.settings;
         let waited = self
             .api(client.wait_for(&car, &id, s.command_wait, s.poll_every))
@@ -1013,6 +1024,25 @@ impl CarServer {
             }
         }
     }
+}
+
+/// The result for a command the server never reports on (see
+/// [`Action::reports_result`]): it was sent, and only the car's screen can
+/// confirm it.
+fn sent_unreported(label: &str, car: &str, id: &CommandId, seconds: u64) -> CallToolResult {
+    let message = format!(
+        "{label} for {car}: sent (command_id {id}). Hyundai's server does not report a \
+         result for this command, so it cannot be confirmed here: ask the user to \
+         check the car's screen. Do NOT send it again."
+    );
+    let data = json!({
+        "command_id": id.as_str(),
+        "outcome": "sent",
+        "seconds": seconds,
+        "vehicle": car,
+        "message": message,
+    });
+    success(message, &data)
 }
 
 /// What a final (or timed-out) command status means, for the model.
@@ -1440,8 +1470,10 @@ impl CarServer {
 
     #[tool(
         description = "Turn valet mode on (on=true) or off (on=false). While on, the car \
-                       hides personal data on its screen. Experimental. Needs the owner's \
-                       PIN on the server. Returns {command_id, outcome, seconds}.",
+                       hides personal data on its screen. Needs the owner's PIN on the \
+                       server. Hyundai's server never reports this command's result, so it \
+                       returns {command_id, outcome: \"sent\"} at once: ask the user to \
+                       check the car's screen, and never send it again to confirm.",
         annotations(
             title = "Valet mode",
             read_only_hint = false,
