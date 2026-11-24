@@ -1118,18 +1118,3 @@ async fn network_errors_include_their_cause() {
         "{text}"
     );
 }
-
-#[test]
-fn railway_permission_error_names_the_fix() {
-    let denied = || {
-        anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
-            .context("could not open /data/mcp-oauth.json.lock")
-    };
-    let hinted = format!("{:#}", crate::data_dir_hint(denied(), true));
-    assert!(hinted.contains("RAILWAY_RUN_UID=0"), "{hinted}");
-    // Elsewhere, and for other errors, the message is unchanged.
-    let plain = format!("{:#}", crate::data_dir_hint(denied(), false));
-    assert!(!plain.contains("RAILWAY_RUN_UID"), "{plain}");
-    let other = anyhow::anyhow!("something else");
-    assert!(!format!("{:#}", crate::data_dir_hint(other, true)).contains("RAILWAY"));
-}

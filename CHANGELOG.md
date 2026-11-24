@@ -9,6 +9,20 @@ library and the `hkc` CLI are versioned together.
 
 ## [Unreleased]
 
+### Removed
+
+- Railway deployment support added in 0.1.4: the "Deploy on Railway"
+  template and button, `railway.json`, `docs/railway.md`, the Railway
+  defaults in `hkc-mcp serve` (`PORT`, `RAILWAY_PUBLIC_DOMAIN`, proxy
+  trust), `HKC_MCP_PASSWORD`, and the `ghcr.io/swapshaonline/hkc-mcp`
+  image workflow. Railway's network blocked outbound connections to port
+  8080, which the Hyundai India API uses, so the server could not reach the
+  car from there. Set the sign-in password with `hkc-mcp set-password`.
+
+### Changed
+
+- The Dockerfile declares `VOLUME /data` again.
+
 ## [0.1.4] - 2026-11-24
 
 ### Added

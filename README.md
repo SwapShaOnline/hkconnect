@@ -17,7 +17,7 @@ Hyundai Bluelink India and Kia Connect India connected cars.
 |---|---|
 | [`hkconnect`](crates/hkconnect) | Async library: login, session reuse, typed reads, remote commands |
 | [`hkc`](crates/hkc) | Command-line app built on the library |
-| [`hkc-mcp`](crates/hkc-mcp) | MCP server so Claude can read and control the car ([setup guide](docs/mcp.md), or [deploy on Railway](docs/railway.md)) |
+| [`hkc-mcp`](crates/hkc-mcp) | MCP server so Claude can read and control the car ([setup guide](docs/mcp.md)) |
 
 An agent skill, [`skills/hkconnect`](skills/hkconnect/SKILL.md),
 tells Claude Code and other agents when and how to use `hkc-mcp` (or `hkc`)
@@ -65,11 +65,6 @@ not been tested against a real Kia. The endpoint-by-endpoint status is in
 are welcome: open an issue with the "New car / endpoint support" form.
 
 ## Install
-
-**No local setup:** deploy `hkc-mcp` to your own Railway account and connect
-it to Claude ([guide](docs/railway.md)):
-
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cSgHE3)
 
 Prebuilt binaries of `hkc` (the CLI) and `hkc-mcp` (the MCP server) are
 published on [GitHub Releases](https://github.com/SwapShaOnline/hkconnect/releases)

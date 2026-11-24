@@ -1423,35 +1423,5 @@ pub async fn set_password(state: &StateFile, password: &str, revoke: bool) -> Re
         .await
 }
 
-/// What [`sync_password`] did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PasswordSync {
-    /// No password was stored; this one now is.
-    Set,
-    /// The stored password already was this one; nothing changed.
-    Unchanged,
-    /// A different password was stored: it was replaced and this many
-    /// issued tokens were revoked.
-    Rotated { revoked: usize },
-}
-
-/// Make `password` the sign-in password, for a password supplied by the
-/// environment (`HKC_MCP_PASSWORD`) on every start: store it when none is
-/// stored, leave the state alone when it already matches, and otherwise
-/// replace it and revoke every token, as `set-password` does by default.
-pub async fn sync_password(state: &StateFile, password: &str) -> Result<PasswordSync> {
-    let Some(hash) = state.read(|s| s.password_hash.clone()).await? else {
-        set_password(state, password, false).await?;
-        return Ok(PasswordSync::Set);
-    };
-    let owned = password.to_owned();
-    let same = tokio::task::spawn_blocking(move || crypto::verify_password(&owned, &hash)).await?;
-    if same {
-        return Ok(PasswordSync::Unchanged);
-    }
-    let revoked = set_password(state, password, true).await?;
-    Ok(PasswordSync::Rotated { revoked })
-}
-
 #[cfg(test)]
 mod tests;
