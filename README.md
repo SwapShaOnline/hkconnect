@@ -64,6 +64,11 @@ are welcome: open an issue with the "New car / endpoint support" form.
 
 ## Install
 
+**No local setup:** deploy `hkc-mcp` to your own Railway account and connect
+it to Claude ([guide](docs/railway.md)):
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cSgHE3)
+
 Prebuilt binaries of `hkc` (the CLI) and `hkc-mcp` (the MCP server) are
 published on [GitHub Releases](https://github.com/SwapShaOnline/hkconnect/releases)
 for macOS (Apple silicon and Intel), Linux (x86_64 and arm64, glibc) and
