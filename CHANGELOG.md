@@ -20,6 +20,8 @@ library and the `hkc` CLI are versioned together.
   "Deploy on Railway" button.
 - Releases publish a multi-arch (amd64, arm64) container image to
   `ghcr.io/swapshaonline/hkc-mcp`.
+- A project icon (`docs/assets/icon.svg`, `icon.png`), shown in the README
+  and listed under `icons` in `server.json` for the MCP Registry.
 
 ### Changed
 
