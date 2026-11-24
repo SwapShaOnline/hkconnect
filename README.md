@@ -1,5 +1,7 @@
 # hkconnect
 
+<img src="docs/assets/icon.svg" width="96" height="96" align="right" alt="hkconnect icon: a padlock under a signal arc">
+
 An unofficial async Rust client, command-line tool and Claude (MCP) server for
 Hyundai Bluelink India and Kia Connect India connected cars.
 

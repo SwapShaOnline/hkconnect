@@ -3,6 +3,22 @@
   "name": "io.github.SwapShaOnline/hkc-mcp",
   "title": "hkconnect (Hyundai/Kia India car)",
   "description": "Read and control your Hyundai Bluelink India or Kia Connect India car: status, trips, lock, climate",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/SwapShaOnline/hkconnect/main/docs/assets/icon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": [
+        "any"
+      ]
+    },
+    {
+      "src": "https://raw.githubusercontent.com/SwapShaOnline/hkconnect/main/docs/assets/icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
+      ]
+    }
+  ],
   "repository": {
     "url": "https://github.com/SwapShaOnline/hkconnect",
     "source": "github"
